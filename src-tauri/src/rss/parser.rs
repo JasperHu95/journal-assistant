@@ -21,8 +21,7 @@ pub fn parse_feed_bytes(feed_id: i64, bytes: &[u8]) -> Result<Vec<Article>, Stri
 
         let published_at = entry
             .updated
-            .or(entry.published)
-            .map(|dt| chrono::DateTime::<chrono::Utc>::from(dt));
+            .or(entry.published);
 
         let content = entry
             .content

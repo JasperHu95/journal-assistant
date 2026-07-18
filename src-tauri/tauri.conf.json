@@ -25,9 +25,7 @@
   },
   "plugins": {
     "sql": {
-      "preload": {
-        "db": "sqlite:journal_assistant.db"
-      }
+      "preload": ["sqlite:journal_assistant.db"]
     }
   }
 }

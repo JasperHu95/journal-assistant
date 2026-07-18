@@ -17,3 +17,48 @@ A. 作为一名专业开发者，应保持代码的清晰，简洁并附有相�
 B. 开发过程中应保持反思，分阶段回顾并完善代码
 C. 在写完代码后，应审查代码2遍，并修正代码。
 D. 在完成开发后，回到该文件，简述本次开发过程，以便日后复盘，对于在本文件中记录的内容，应保持简洁明了，并遵循markdown语法。
+
+---
+
+## V1 开发日志 (2026-07-18)
+
+### 技术栈
+
+| 层 | 选择 |
+|---|---|
+| 桌面框架 | Tauri v2 (Rust) |
+| 前端 | Svelte 5 + TypeScript + Vite |
+| 样式 | Tailwind CSS 4 |
+| 数据库 | SQLite (tauri-plugin-sql, 前端 JS API) |
+| RSS | feed-rs + reqwest + scraper |
+
+### 架构决策
+
+- 数据库操作全部在前端通过 `@tauri-apps/plugin-sql` 完成，Rust 后端仅负责 RSS 抓取/解析/发现等业务逻辑
+- 前端不使用 SvelteKit，采用 vanilla Svelte + 手动路由（更轻量，适合桌面应用）
+- UI 采用 QJE 学术复古风格：酒红(#8B1A2B) + 暖奶油纸色(#FAF7F2) + Cormorant Garamond 字体
+
+### 开发过程
+
+1. **Phase 0**: 搭建 Tauri + Svelte 项目骨架，配置 Tailwind CSS 和 SQLite 插件
+2. **Phase 1**: 实现 Rust RSS 引擎（parser/discovery/fetcher）和前端数据库层（db.ts）
+3. **Phase 2-4**: 实现 RSS 源管理、文章列表（含已读/未读）、标签管理的完整 UI
+4. **Phase 5**: 中英双语系统（i18n.ts + localStorage 持久化）
+5. **Phase 6**: QJE 学术复古风格打磨（配色、字体、间距、滚动条）
+6. **Phase 7**: Linux 平台构建验证（release binary 25MB）
+7. **Phase 8**: 两轮代码审查 - 修复 clippy 警告，确认无 unwrap/todo/unsafe/emoji
+
+### 遇到的问题
+
+- Bazzite 系统 npm 默认 `omit=dev`，导致 devDependencies 不安装，通过 `.npmrc` 覆盖
+- tauri-plugin-sql v2 不在 Rust 侧暴露 SqlitePool，需将数据库层移至前端
+- rpm-ostree 安装系统依赖后需要重启才能生效
+
+### 待办 (V2 方向)
+
+- Win11 交叉编译打包 (.exe)
+- 系统通知（新文章到达）
+- OPML 导入/导出
+- 暗色模式
+- 文章收藏/星标
+- 自动刷新间隔设置
