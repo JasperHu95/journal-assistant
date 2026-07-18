@@ -33,7 +33,7 @@ const zh: Translations = {
   "tags.placeholder": "例如：机器学习",
   "tags.remove": "移除",
   "tags.empty": "暂无标签",
-  "lang.switch": "English",
+  "lang.switch": "切换到 English",
   "common.loading": "加载中...",
   "version": "v0.1.0",
 };
@@ -71,7 +71,7 @@ const en: Translations = {
   "tags.placeholder": "e.g. Machine Learning",
   "tags.remove": "Remove",
   "tags.empty": "No tags created yet.",
-  "lang.switch": "中文",
+  "lang.switch": "Switch to 中文",
   "common.loading": "Loading...",
   "version": "v0.1.0",
 };
