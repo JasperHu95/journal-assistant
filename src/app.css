@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
+@import "tailwindcss";
+
+/* QJE-inspired academic theme */
+@theme {
+  --color-paper: #FAF7F2;
+  --color-surface: #F5F0E8;
+  --color-ink: #2C2416;
+  --color-ink-dim: #6B5E4A;
+  --color-accent: #8B1A2B;
+  --color-border: #D4C8B0;
+  --color-read: #9B9B8A;
+}
+
+/* Serif font for headings and academic feel */
+.font-serif {
+  font-family: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif;
+}
+
+/* Global base styles */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #2C2416;
+  background-color: #FAF7F2;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F5F0E8;
+}
+::-webkit-scrollbar-thumb {
+  background: #D4C8B0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9B9B8A;
+}
+
+/* Selection color */
+::selection {
+  background-color: #8B1A2B20;
+  color: #2C2416;
+}
+
+/* Radio button accent */
+input[type="radio"] {
+  accent-color: #8B1A2B;
+}
+
+/* Link styles */
+a {
+  color: #8B1A2B;
+}
+a:hover {
+  text-decoration: underline;
+}

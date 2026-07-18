@@ -1,0 +1,108 @@
+type Translations = Record<string, string>;
+
+const zh: Translations = {
+  "app.title": "Journal Assistant",
+  "nav.dashboard": "仪表盘",
+  "nav.feeds": "RSS 订阅源",
+  "nav.articles": "文章",
+  "nav.tags": "标签",
+  "dashboard.total_feeds": "订阅源总数",
+  "dashboard.total_articles": "文章总数",
+  "dashboard.unread": "未读",
+  "dashboard.tags": "标签数",
+  "feeds.title": "RSS 订阅源",
+  "feeds.add": "添加订阅源",
+  "feeds.cancel": "取消",
+  "feeds.mode_url": "RSS 地址",
+  "feeds.mode_discover": "自动发现",
+  "feeds.url_placeholder": "https://example.com/rss.xml",
+  "feeds.discover_placeholder": "https://example.com",
+  "feeds.adding": "添加中...",
+  "feeds.remove": "移除",
+  "feeds.empty": "暂无订阅源",
+  "feeds.no_found": "未发现 RSS 源",
+  "articles.title": "文章",
+  "articles.select": "选择一篇文章阅读",
+  "articles.read_full": "阅读全文",
+  "articles.unknown_author": "未知作者",
+  "articles.empty": "暂无文章，请先添加订阅源",
+  "tags.title": "标签",
+  "tags.name": "标签名称",
+  "tags.color": "颜色",
+  "tags.create": "创建",
+  "tags.placeholder": "例如：机器学习",
+  "tags.remove": "移除",
+  "tags.empty": "暂无标签",
+  "lang.switch": "English",
+  "common.loading": "加载中...",
+  "version": "v0.1.0",
+};
+
+const en: Translations = {
+  "app.title": "Journal Assistant",
+  "nav.dashboard": "Dashboard",
+  "nav.feeds": "RSS Feeds",
+  "nav.articles": "Articles",
+  "nav.tags": "Tags",
+  "dashboard.total_feeds": "Total Feeds",
+  "dashboard.total_articles": "Total Articles",
+  "dashboard.unread": "Unread",
+  "dashboard.tags": "Tags",
+  "feeds.title": "RSS Feeds",
+  "feeds.add": "Add Feed",
+  "feeds.cancel": "Cancel",
+  "feeds.mode_url": "RSS URL",
+  "feeds.mode_discover": "Auto Discover",
+  "feeds.url_placeholder": "https://example.com/rss.xml",
+  "feeds.discover_placeholder": "https://example.com",
+  "feeds.adding": "Adding...",
+  "feeds.remove": "Remove",
+  "feeds.empty": "No feeds subscribed yet.",
+  "feeds.no_found": "No feeds found at this URL",
+  "articles.title": "Articles",
+  "articles.select": "Select an article to read",
+  "articles.read_full": "Read Full Article",
+  "articles.unknown_author": "Unknown author",
+  "articles.empty": "No articles yet. Add some feeds first.",
+  "tags.title": "Tags",
+  "tags.name": "Tag Name",
+  "tags.color": "Color",
+  "tags.create": "Create",
+  "tags.placeholder": "e.g. Machine Learning",
+  "tags.remove": "Remove",
+  "tags.empty": "No tags created yet.",
+  "lang.switch": "中文",
+  "common.loading": "Loading...",
+  "version": "v0.1.0",
+};
+
+const dicts: Record<string, Translations> = { zh, en };
+
+let currentLang = $state("zh");
+
+// Restore saved language preference
+if (typeof window !== "undefined") {
+  const saved = localStorage.getItem("ja-lang");
+  if (saved && dicts[saved]) currentLang = saved;
+}
+
+export function t(key: string): string {
+  return dicts[currentLang]?.[key] ?? dicts["zh"]?.[key] ?? key;
+}
+
+export function getLang(): string {
+  return currentLang;
+}
+
+export function setLang(lang: string) {
+  if (dicts[lang]) {
+    currentLang = lang;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("ja-lang", lang);
+    }
+  }
+}
+
+export function toggleLang() {
+  setLang(currentLang === "zh" ? "en" : "zh");
+}
