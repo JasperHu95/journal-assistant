@@ -1,9 +1,16 @@
 <script lang="ts">
   import { getArticles, markRead, type Article } from "../lib/db";
-  import { t } from "../lib/i18n";
+  import { t, onLangChange } from "../lib/i18n";
 
   let articles = $state<Article[]>([]);
   let selected = $state<Article | null>(null);
+
+  let langVersion = $state(0);
+  onLangChange(() => langVersion++);
+  function localized(key: string): string {
+    langVersion;
+    return t(key);
+  }
 
   $effect(() => {
     (async () => { articles = await getArticles(); })();
@@ -22,7 +29,7 @@
   <!-- Article list -->
   <div class="w-[380px] border-r border-[#D4C8B0] overflow-auto bg-white">
     <div class="p-4 border-b border-[#D4C8B0] sticky top-0 bg-white z-10">
-      <h2 class="font-serif text-xl text-[#2C2416] tracking-wide">{t("articles.title")}</h2>
+      <h2 class="font-serif text-xl text-[#2C2416] tracking-wide">{localized("articles.title")}</h2>
     </div>
     {#each articles as article}
       <button
@@ -38,12 +45,12 @@
           {/if}
           <div class="min-w-0">
             <p class="text-sm text-[#2C2416] {!article.is_read ? 'font-semibold' : 'font-normal'} leading-snug">{article.title}</p>
-            <p class="text-xs text-[#6B5E4A] mt-1">{article.author || t("articles.unknown_author")}</p>
+            <p class="text-xs text-[#6B5E4A] mt-1">{article.author || localized("articles.unknown_author")}</p>
           </div>
         </div>
       </button>
     {:else}
-      <p class="text-sm text-[#6B5E4A] p-6 text-center italic">{t("articles.empty")}</p>
+      <p class="text-sm text-[#6B5E4A] p-6 text-center italic">{localized("articles.empty")}</p>
     {/each}
   </div>
 
@@ -66,12 +73,12 @@
       {#if selected.url}
         <a href={selected.url} target="_blank" rel="noopener noreferrer"
           class="inline-block mt-6 text-sm text-[#8B1A2B] hover:underline">
-          {t("articles.read_full")} &rarr;
+          {localized("articles.read_full")} &rarr;
         </a>
       {/if}
     {:else}
       <div class="flex items-center justify-center h-full">
-        <p class="text-sm text-[#6B5E4A] italic">{t("articles.select")}</p>
+        <p class="text-sm text-[#6B5E4A] italic">{localized("articles.select")}</p>
       </div>
     {/if}
   </div>

@@ -20,7 +20,10 @@ const zh: Translations = {
   "feeds.adding": "添加中...",
   "feeds.remove": "移除",
   "feeds.empty": "暂无订阅源",
+  "feeds.refresh": "刷新",
+  "feeds.refreshing": "刷新中...",
   "feeds.no_found": "未发现 RSS 源",
+  "feeds.refresh_ok": "文章已更新",
   "articles.title": "文章",
   "articles.select": "选择一篇文章阅读",
   "articles.read_full": "阅读全文",
@@ -33,8 +36,9 @@ const zh: Translations = {
   "tags.placeholder": "例如：机器学习",
   "tags.remove": "移除",
   "tags.empty": "暂无标签",
-  "lang.switch": "切换到 English",
+  "lang.switch": "Switch to English",
   "common.loading": "加载中...",
+  "common.db_error": "数据库错误",
   "version": "v0.1.0",
 };
 
@@ -58,7 +62,10 @@ const en: Translations = {
   "feeds.adding": "Adding...",
   "feeds.remove": "Remove",
   "feeds.empty": "No feeds subscribed yet.",
+  "feeds.refresh": "Refresh",
+  "feeds.refreshing": "Refreshing...",
   "feeds.no_found": "No feeds found at this URL",
+  "feeds.refresh_ok": "Articles updated",
   "articles.title": "Articles",
   "articles.select": "Select an article to read",
   "articles.read_full": "Read Full Article",
@@ -71,8 +78,9 @@ const en: Translations = {
   "tags.placeholder": "e.g. Machine Learning",
   "tags.remove": "Remove",
   "tags.empty": "No tags created yet.",
-  "lang.switch": "Switch to 中文",
+  "lang.switch": "切换到中文",
   "common.loading": "Loading...",
+  "common.db_error": "Database Error",
   "version": "v0.1.0",
 };
 

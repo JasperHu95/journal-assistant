@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { getFeeds, addFeed, deleteFeed, type Feed } from "../lib/db";
-  import { t } from "../lib/i18n";
+  import { getFeeds, addFeed, deleteFeed, insertArticles, type Feed } from "../lib/db";
+  import { t, onLangChange } from "../lib/i18n";
   import { invoke } from "@tauri-apps/api/core";
 
   let feeds = $state<Feed[]>([]);
@@ -8,7 +8,17 @@
   let feedUrl = $state("");
   let feedMode = $state<"url" | "discover">("url");
   let loading = $state(false);
+  let refreshing = $state<number | null>(null);
   let error = $state("");
+  let successMsg = $state("");
+
+  // i18n reactivity
+  let langVersion = $state(0);
+  onLangChange(() => langVersion++);
+  function localized(key: string): string {
+    langVersion;
+    return t(key);
+  }
 
   async function loadFeeds() { feeds = await getFeeds(); }
   $effect(() => { loadFeeds(); });
@@ -17,13 +27,14 @@
     if (!feedUrl.trim()) return;
     loading = true;
     error = "";
+    successMsg = "";
     try {
       if (feedMode === "url") {
         const result = await invoke<Feed>("add_feed", { url: feedUrl });
         await addFeed(result);
       } else {
         const discovered = await invoke<{ url: string; title: string | null }[]>("discover_feeds", { url: feedUrl });
-        if (discovered.length === 0) { error = t("feeds.no_found"); return; }
+        if (discovered.length === 0) { error = localized("feeds.no_found"); return; }
         for (const d of discovered) {
           const result = await invoke<Feed>("add_feed", { url: d.url });
           await addFeed(result);
@@ -39,6 +50,26 @@
     }
   }
 
+  async function handleRefresh(feed: Feed) {
+    refreshing = feed.id;
+    error = "";
+    successMsg = "";
+    try {
+      const articles = await invoke<{ feed_id: number; title: string; url: string | null; author: string | null; content: string | null; summary: string | null; published_at: string | null }[]>(
+        "refresh_feed",
+        { feedUrl: feed.url }
+      );
+      // Assign the correct feed_id before inserting
+      const withFeedId = articles.map(a => ({ ...a, feed_id: feed.id! }));
+      await insertArticles(withFeedId);
+      successMsg = localized("feeds.refresh_ok");
+    } catch (e) {
+      error = String(e);
+    } finally {
+      refreshing = null;
+    }
+  }
+
   async function handleDelete(id: number) {
     await deleteFeed(id);
     await loadFeeds();
@@ -47,12 +78,12 @@
 
 <div class="p-8">
   <div class="flex items-center justify-between mb-6">
-    <h2 class="font-serif text-2xl text-[#2C2416] tracking-wide">{t("feeds.title")}</h2>
+    <h2 class="font-serif text-2xl text-[#2C2416] tracking-wide">{localized("feeds.title")}</h2>
     <button
       onclick={() => showAdd = !showAdd}
       class="px-4 py-2 bg-[#8B1A2B] text-white text-sm hover:bg-[#6d1522] transition-colors"
     >
-      {showAdd ? t("feeds.cancel") : t("feeds.add")}
+      {showAdd ? localized("feeds.cancel") : localized("feeds.add")}
     </button>
   </div>
 
@@ -61,17 +92,17 @@
       <div class="flex gap-6 mb-3">
         <label class="flex items-center gap-2 text-sm text-[#2C2416] cursor-pointer">
           <input type="radio" bind:group={feedMode} value="url" class="accent-[#8B1A2B]" />
-          {t("feeds.mode_url")}
+          {localized("feeds.mode_url")}
         </label>
         <label class="flex items-center gap-2 text-sm text-[#2C2416] cursor-pointer">
           <input type="radio" bind:group={feedMode} value="discover" class="accent-[#8B1A2B]" />
-          {t("feeds.mode_discover")}
+          {localized("feeds.mode_discover")}
         </label>
       </div>
       <div class="flex gap-2">
         <input
           bind:value={feedUrl}
-          placeholder={feedMode === "url" ? t("feeds.url_placeholder") : t("feeds.discover_placeholder")}
+          placeholder={feedMode === "url" ? localized("feeds.url_placeholder") : localized("feeds.discover_placeholder")}
           class="flex-1 border border-[#D4C8B0] px-3 py-2 text-sm text-[#2C2416] bg-[#FAF7F2] focus:outline-none focus:border-[#8B1A2B]"
         />
         <button
@@ -79,13 +110,17 @@
           disabled={loading}
           class="px-4 py-2 bg-[#8B1A2B] text-white text-sm hover:bg-[#6d1522] disabled:opacity-50 transition-colors"
         >
-          {loading ? t("feeds.adding") : t("feeds.add")}
+          {loading ? localized("feeds.adding") : localized("feeds.add")}
         </button>
       </div>
       {#if error}
         <p class="text-sm text-red-700 mt-2">{error}</p>
       {/if}
     </div>
+  {/if}
+
+  {#if successMsg}
+    <p class="text-sm text-green-700 mb-4">{successMsg}</p>
   {/if}
 
   <div class="space-y-0">
@@ -95,15 +130,24 @@
           <p class="font-medium text-[#2C2416] text-sm">{feed.title}</p>
           <p class="text-xs text-[#6B5E4A] mt-0.5 truncate">{feed.url}</p>
         </div>
-        <button
-          onclick={() => handleDelete(feed.id!)}
-          class="text-xs text-[#8B1A2B] hover:underline ml-4 shrink-0"
-        >
-          {t("feeds.remove")}
-        </button>
+        <div class="flex items-center gap-3 ml-4 shrink-0">
+          <button
+            onclick={() => handleRefresh(feed)}
+            disabled={refreshing === feed.id}
+            class="text-xs text-[#8B1A2B] hover:underline disabled:opacity-50"
+          >
+            {refreshing === feed.id ? localized("feeds.refreshing") : localized("feeds.refresh")}
+          </button>
+          <button
+            onclick={() => handleDelete(feed.id!)}
+            class="text-xs text-[#6B5E4A] hover:underline"
+          >
+            {localized("feeds.remove")}
+          </button>
+        </div>
       </div>
     {:else}
-      <p class="text-sm text-[#6B5E4A] py-12 text-center italic">{t("feeds.empty")}</p>
+      <p class="text-sm text-[#6B5E4A] py-12 text-center italic">{localized("feeds.empty")}</p>
     {/each}
   </div>
 </div>

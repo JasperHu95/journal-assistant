@@ -11,10 +11,9 @@
   let dbReady = $state(false);
   let dbError = $state("");
 
-  // Force re-render when language changes
+  // i18n reactivity
   let langVersion = $state(0);
   onLangChange(() => langVersion++);
-
   function localized(key: string): string {
     langVersion;
     return t(key);
@@ -41,7 +40,7 @@
   <main class="flex-1 overflow-auto">
     {#if dbError}
       <div class="flex flex-col items-center justify-center h-full gap-4">
-        <p class="text-[#8B1A2B] text-sm font-medium">Database Error</p>
+        <p class="text-[#8B1A2B] text-sm font-medium">{localized("common.db_error")}</p>
         <p class="text-[#6B5E4A] text-xs max-w-md text-center">{dbError}</p>
       </div>
     {:else if !dbReady}
