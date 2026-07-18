@@ -78,12 +78,21 @@ const en: Translations = {
 
 const dicts: Record<string, Translations> = { zh, en };
 
-let currentLang = $state("zh");
+// Use a plain variable + callback pattern instead of $state (which only works in .svelte files)
+let currentLang = "zh";
 
 // Restore saved language preference
 if (typeof window !== "undefined") {
   const saved = localStorage.getItem("ja-lang");
   if (saved && dicts[saved]) currentLang = saved;
+}
+
+// Listeners for reactive updates
+type Listener = () => void;
+const listeners: Set<Listener> = new Set();
+
+function notify() {
+  listeners.forEach((fn) => fn());
 }
 
 export function t(key: string): string {
@@ -100,9 +109,16 @@ export function setLang(lang: string) {
     if (typeof window !== "undefined") {
       localStorage.setItem("ja-lang", lang);
     }
+    notify();
   }
 }
 
 export function toggleLang() {
   setLang(currentLang === "zh" ? "en" : "zh");
+}
+
+// Subscribe to language changes (for Svelte reactivity)
+export function onLangChange(fn: Listener): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
 }

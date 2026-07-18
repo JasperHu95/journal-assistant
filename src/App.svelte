@@ -5,15 +5,30 @@
   import ArticlesPage from "./routes/ArticlesPage.svelte";
   import TagsPage from "./routes/TagsPage.svelte";
   import { initDb } from "./lib/db";
-  import { t } from "./lib/i18n";
-  import { onMount } from "svelte";
+  import { t, onLangChange } from "./lib/i18n";
 
   let currentRoute = $state("/");
   let dbReady = $state(false);
+  let dbError = $state("");
 
-  onMount(async () => {
-    await initDb();
-    dbReady = true;
+  // Force re-render when language changes
+  let langVersion = $state(0);
+  onLangChange(() => langVersion++);
+
+  function localized(key: string): string {
+    langVersion;
+    return t(key);
+  }
+
+  $effect(() => {
+    initDb()
+      .then(() => {
+        dbReady = true;
+      })
+      .catch((e) => {
+        console.error("Database init failed:", e);
+        dbError = String(e);
+      });
   });
 
   function navigate(route: string) {
@@ -24,9 +39,14 @@
 <div class="flex h-screen bg-[#FAF7F2] font-sans">
   <Sidebar {currentRoute} {navigate} />
   <main class="flex-1 overflow-auto">
-    {#if !dbReady}
+    {#if dbError}
+      <div class="flex flex-col items-center justify-center h-full gap-4">
+        <p class="text-[#8B1A2B] text-sm font-medium">Database Error</p>
+        <p class="text-[#6B5E4A] text-xs max-w-md text-center">{dbError}</p>
+      </div>
+    {:else if !dbReady}
       <div class="flex items-center justify-center h-full">
-        <p class="text-[#6B5E4A] text-sm">{t("common.loading")}</p>
+        <p class="text-[#6B5E4A] text-sm">{localized("common.loading")}</p>
       </div>
     {:else if currentRoute === "/"}
       <Dashboard />
