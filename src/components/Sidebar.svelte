@@ -13,6 +13,7 @@
     { path: "/articles", labelKey: "nav.articles" },
     { path: "/journals", labelKey: "nav.journals" },
     { path: "/tags", labelKey: "nav.tags" },
+    { path: "/settings", labelKey: "nav.settings" },
   ];
 
   function localized(key: string): string {

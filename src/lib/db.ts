@@ -41,6 +41,10 @@ export async function initDb() {
       FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
       FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
   // 旧版本 articles 表没有 categories 列，幂等迁移：列已存在时 ALTER 报错，忽略即可
   try {
@@ -189,5 +193,23 @@ export async function getArticleTags(articleId: number): Promise<Tag[]> {
   return await d.select<Tag[]>(
     "SELECT t.* FROM tags t JOIN article_tags at ON t.id = at.tag_id WHERE at.article_id = ?",
     [articleId]
+  );
+}
+
+// 设置项（key-value）读写，如 DeepSeek API Key
+export async function getSetting(key: string): Promise<string | null> {
+  const d = getDb();
+  const rows = await d.select<{ value: string }[]>(
+    "SELECT value FROM settings WHERE key = ?",
+    [key]
+  );
+  return rows.length > 0 ? rows[0].value : null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const d = getDb();
+  await d.execute(
+    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    [key, value]
   );
 }

@@ -12,6 +12,7 @@ pub fn run() {
             commands::discover_feeds,
             commands::refresh_feed,
             commands::extract_abstract,
+            commands::translate_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

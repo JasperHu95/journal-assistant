@@ -37,3 +37,56 @@ pub async fn extract_abstract(url: String) -> Result<String, String> {
         .await
         .map_err(|e| format!("Failed to extract abstract: {}", e))
 }
+
+/// 调用 DeepSeek API 将文本翻译为目标语言（如 "中文"、"English"），返回译文。
+#[tauri::command]
+pub async fn translate_text(
+    text: String,
+    api_key: String,
+    target_lang: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let body = serde_json::json!({
+        "model": "deepseek-chat",
+        "messages": [
+            {
+                "role": "system",
+                "content": format!(
+                    "你是学术翻译专家。将以下学术文本翻译为{}。保持学术用语准确，保留专业术语。",
+                    target_lang
+                )
+            },
+            { "role": "user", "content": text }
+        ],
+        "temperature": 0.3
+    });
+
+    let response = client
+        .post("https://api.deepseek.com/v1/chat/completions")
+        .bearer_auth(&api_key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Translation request failed: {}", e))?;
+
+    // 非 2xx 时把状态码和响应体带上，便于定位（Key 错误、额度不足等）
+    if !response.status().is_success() {
+        let status = response.status();
+        let detail = response.text().await.unwrap_or_default();
+        return Err(format!("DeepSeek API error {}: {}", status, detail));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse DeepSeek response: {}", e))?;
+
+    json["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Unexpected response format from DeepSeek API".to_string())
+}

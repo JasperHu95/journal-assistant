@@ -5,6 +5,7 @@
   import ArticlesPage from "./routes/ArticlesPage.svelte";
   import JournalPage from "./routes/JournalPage.svelte";
   import TagsPage from "./routes/TagsPage.svelte";
+  import SettingsPage from "./routes/SettingsPage.svelte";
   import { initDb } from "./lib/db";
   import { t, onLangChange } from "./lib/i18n";
 
@@ -58,6 +59,8 @@
       <JournalPage />
     {:else if currentRoute === "/tags"}
       <TagsPage />
+    {:else if currentRoute === "/settings"}
+      <SettingsPage />
     {/if}
   </main>
 </div>

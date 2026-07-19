@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { getFeedsWithArticleCount, getArticles, markRead, updateArticleSummary, type FeedWithCount, type Article } from "../lib/db";
-  import { t, onLangChange } from "../lib/i18n";
+  import { getFeedsWithArticleCount, getArticles, markRead, updateArticleSummary, getSetting, type FeedWithCount, type Article } from "../lib/db";
+  import { t, onLangChange, getLang } from "../lib/i18n";
   import { invoke } from "@tauri-apps/api/core";
 
   let feeds = $state<FeedWithCount[]>([]);
@@ -9,6 +9,9 @@
   let selected = $state<Article | null>(null);
   let extracting = $state(false);
   let extractError = $state("");
+  let translating = $state(false);
+  let translation = $state("");
+  let translateError = $state("");
 
   // i18n 响应式
   let langVersion = $state(0);
@@ -38,6 +41,9 @@
   // 点击文章：展示详情并标记已读
   async function handleSelect(article: Article) {
     selected = article;
+    extractError = "";
+    translation = "";
+    translateError = "";
     if (!article.is_read) {
       await markRead(article.id!);
       article.is_read = true;
@@ -58,6 +64,33 @@
       console.error("Failed to extract abstract:", e);
     } finally {
       extracting = false;
+    }
+  }
+
+  // 调用 DeepSeek API 翻译当前文章摘要
+  async function handleTranslate() {
+    const article = selected;
+    if (!article?.summary || translating) return;
+    translating = true;
+    translateError = "";
+    translation = "";
+    try {
+      const apiKey = await getSetting("deepseek_api_key");
+      if (!apiKey) {
+        translateError = localized("articles.no_api_key");
+        return;
+      }
+      const targetLang = getLang() === "zh" ? "中文" : "English";
+      translation = await invoke<string>("translate_text", {
+        text: article.summary,
+        apiKey,
+        targetLang,
+      });
+    } catch (e) {
+      console.error("Failed to translate:", e);
+      translateError = String(e);
+    } finally {
+      translating = false;
     }
   }
 </script>
@@ -129,6 +162,22 @@
       </div>
       {#if selected.summary}
         <p class="text-sm text-[#2C2416] leading-relaxed whitespace-pre-wrap">{selected.summary}</p>
+        <button
+          onclick={handleTranslate}
+          disabled={translating}
+          class="mt-4 px-4 py-2 bg-[#8B1A2B] text-white text-sm hover:bg-[#6d1522] disabled:opacity-50 transition-colors"
+        >
+          {translating ? localized("articles.translating") : localized("articles.translate")}
+        </button>
+        {#if translation}
+          <div class="mt-4 p-4 bg-[#F5F0E8] border border-[#D4C8B0]">
+            <p class="text-xs font-medium text-[#6B5E4A] mb-2">{localized("articles.translated")}</p>
+            <p class="text-sm text-[#2C2416] leading-relaxed whitespace-pre-wrap">{translation}</p>
+          </div>
+        {/if}
+        {#if translateError}
+          <p class="mt-2 text-xs text-red-600">{translateError}</p>
+        {/if}
       {:else if selected.url}
         <button
           onclick={handleExtract}

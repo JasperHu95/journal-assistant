@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { getArticles, markRead, updateArticleSummary, type Article } from "../lib/db";
-  import { t, onLangChange } from "../lib/i18n";
+  import { getArticles, markRead, updateArticleSummary, getSetting, type Article } from "../lib/db";
+  import { t, getLang, onLangChange } from "../lib/i18n";
   import { invoke } from "@tauri-apps/api/core";
 
   let articles = $state<Article[]>([]);
   let selected = $state<Article | null>(null);
   let extracting = $state(false);
   let extractError = $state("");
+  let translating = $state(false);
+  let translation = $state("");
+  let translateError = $state("");
 
   let langVersion = $state(0);
   onLangChange(() => langVersion++);
@@ -22,6 +25,8 @@
   async function handleSelect(article: Article) {
     selected = article;
     extractError = "";
+    translation = "";
+    translateError = "";
     if (!article.is_read) {
       await markRead(article.id!);
       article.is_read = true;
@@ -44,6 +49,33 @@
       extractError = String(e);
     } finally {
       extracting = false;
+    }
+  }
+
+  // 调用 DeepSeek API 将当前文章摘要翻译为界面语言
+  async function handleTranslate() {
+    const article = selected;
+    if (!article?.summary || translating) return;
+    translating = true;
+    translateError = "";
+    translation = "";
+    try {
+      const apiKey = await getSetting("deepseek_api_key");
+      if (!apiKey) {
+        translateError = localized("articles.no_api_key");
+        return;
+      }
+      const targetLang = getLang() === "zh" ? "中文" : "English";
+      translation = await invoke<string>("translate_text", {
+        text: article.summary,
+        apiKey,
+        targetLang,
+      });
+    } catch (e) {
+      console.error("Failed to translate:", e);
+      translateError = String(e);
+    } finally {
+      translating = false;
     }
   }
 </script>
