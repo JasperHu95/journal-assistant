@@ -1,5 +1,5 @@
 use crate::models::{Article, DiscoveredFeed, Feed};
-use crate::rss::{discovery, fetcher};
+use crate::rss::{discovery, extract, fetcher};
 
 /// Fetch and parse an RSS feed from a URL. Returns feed metadata.
 /// The frontend is responsible for storing the result in SQLite.
@@ -26,4 +26,14 @@ pub async fn refresh_feed(feed_url: String) -> Result<Vec<Article>, String> {
     fetcher::fetch_articles(&feed_url)
         .await
         .map_err(|e| format!("Failed to refresh feed: {}", e))
+}
+
+/// 从论文 URL 抓取摘要/描述。
+/// 优先取 <meta name="description"> 或 <meta property="og:description">，
+/// 两者都没有时退回正文中第一个有实质内容的 <p>。
+#[tauri::command]
+pub async fn extract_abstract(url: String) -> Result<String, String> {
+    extract::extract_abstract_from_url(&url)
+        .await
+        .map_err(|e| format!("Failed to extract abstract: {}", e))
 }

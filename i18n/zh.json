@@ -18,6 +18,8 @@
   "feeds.url_placeholder": "输入RSS订阅地址...",
   "articles.empty": "暂无文章，添加订阅源并刷新后即可查看。",
   "articles.no_summary": "暂无摘要。",
+  "articles.extract": "提取摘要",
+  "articles.extracting": "提取中...",
   "tags.create": "创建标签",
   "tags.name": "名称",
   "tags.name_placeholder": "输入标签名称...",

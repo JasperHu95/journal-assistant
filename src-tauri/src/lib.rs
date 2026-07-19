@@ -11,6 +11,7 @@ pub fn run() {
             commands::add_feed,
             commands::discover_feeds,
             commands::refresh_feed,
+            commands::extract_abstract,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

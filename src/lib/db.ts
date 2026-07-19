@@ -87,6 +87,11 @@ export interface Tag {
   color: string | null;
 }
 
+/** Feed 及其文章数（期刊视图用） */
+export interface FeedWithCount extends Feed {
+  article_count: number;
+}
+
 // Feed CRUD
 export async function addFeed(feed: Feed): Promise<void> {
   const d = getDb();
@@ -106,6 +111,18 @@ export async function deleteFeed(id: number): Promise<void> {
   await d.execute("DELETE FROM feeds WHERE id = ?", [id]);
 }
 
+// 期刊视图：查询所有 feed 并附带各自的文章数
+export async function getFeedsWithArticleCount(): Promise<FeedWithCount[]> {
+  const d = getDb();
+  return await d.select<FeedWithCount[]>(
+    `SELECT f.*, COUNT(a.id) AS article_count
+     FROM feeds f
+     LEFT JOIN articles a ON a.feed_id = f.id
+     GROUP BY f.id
+     ORDER BY f.title`
+  );
+}
+
 // Article CRUD
 export async function insertArticles(articles: Article[]): Promise<void> {
   const d = getDb();
@@ -119,7 +136,7 @@ export async function insertArticles(articles: Article[]): Promise<void> {
 
 export async function getArticles(feedId?: number): Promise<Article[]> {
   const d = getDb();
-  if (feedId) {
+  if (feedId != null) {
     return await d.select<Article[]>("SELECT * FROM articles WHERE feed_id = ? ORDER BY published_at DESC", [feedId]);
   }
   return await d.select<Article[]>("SELECT * FROM articles ORDER BY published_at DESC");
@@ -128,6 +145,12 @@ export async function getArticles(feedId?: number): Promise<Article[]> {
 export async function markRead(id: number): Promise<void> {
   const d = getDb();
   await d.execute("UPDATE articles SET is_read = 1 WHERE id = ?", [id]);
+}
+
+// 抓取的摘要写回数据库
+export async function updateArticleSummary(id: number, summary: string): Promise<void> {
+  const d = getDb();
+  await d.execute("UPDATE articles SET summary = ? WHERE id = ?", [summary, id]);
 }
 
 export async function markAllRead(): Promise<void> {

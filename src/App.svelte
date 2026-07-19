@@ -3,6 +3,7 @@
   import Dashboard from "./routes/Dashboard.svelte";
   import FeedsPage from "./routes/FeedsPage.svelte";
   import ArticlesPage from "./routes/ArticlesPage.svelte";
+  import JournalPage from "./routes/JournalPage.svelte";
   import TagsPage from "./routes/TagsPage.svelte";
   import { initDb } from "./lib/db";
   import { t, onLangChange } from "./lib/i18n";
@@ -53,6 +54,8 @@
       <FeedsPage />
     {:else if currentRoute === "/articles"}
       <ArticlesPage />
+    {:else if currentRoute === "/journals"}
+      <JournalPage />
     {:else if currentRoute === "/tags"}
       <TagsPage />
     {/if}

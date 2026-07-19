@@ -18,6 +18,8 @@
   "feeds.url_placeholder": "Enter RSS feed URL...",
   "articles.empty": "No articles found. Add some feeds and refresh to see articles here.",
   "articles.no_summary": "No summary available.",
+  "articles.extract": "Extract Abstract",
+  "articles.extracting": "Extracting...",
   "tags.create": "Create Tag",
   "tags.name": "Name",
   "tags.name_placeholder": "Enter tag name...",
