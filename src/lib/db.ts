@@ -4,6 +4,13 @@ import { invoke } from "@tauri-apps/api/core";
 let db: InstanceType<typeof Database> | null = null;
 
 export async function initDb() {
+  // Tauri 的 invoke 依赖 window.__TAURI_INTERNALS__，仅在 Tauri webview 中存在。
+  // 普通浏览器打开 localhost:1420 会触发此检查。
+  if (!("__TAURI_INTERNALS__" in window)) {
+    throw new Error(
+      "请通过 npm run tauri dev 或安装后的桌面应用启动，浏览器无法访问本地数据库。"
+    );
+  }
   db = await Database.load("sqlite:journal_assistant.db");
   await db.execute(`
     CREATE TABLE IF NOT EXISTS feeds (
