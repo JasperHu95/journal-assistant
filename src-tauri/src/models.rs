@@ -21,6 +21,9 @@ pub struct Article {
     pub author: Option<String>,
     pub content: Option<String>,
     pub summary: Option<String>,
+    /// 分类/标签列表（来自 RSS category 或 Atom category）
+    #[serde(default)]
+    pub categories: Vec<String>,
     pub published_at: Option<DateTime<Utc>>,
     pub is_read: bool,
     pub is_starred: bool,

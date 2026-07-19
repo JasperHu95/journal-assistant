@@ -66,6 +66,10 @@
         {#if selected.published_at}
           <span>{selected.published_at}</span>
         {/if}
+      {#if selected.categories}
+        <span class="text-[#D4C8B0]">|</span>
+        <span class="italic">{typeof selected.categories === "string" ? selected.categories : selected.categories?.join(", ")}</span>
+      {/if}
       </div>
       {#if selected.summary}
         <p class="text-sm text-[#2C2416] leading-relaxed whitespace-pre-wrap">{selected.summary}</p>

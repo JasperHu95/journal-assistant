@@ -22,6 +22,7 @@ export async function initDb() {
       author TEXT,
       content TEXT,
       summary TEXT,
+      categories TEXT,
       published_at TEXT,
       is_read INTEGER NOT NULL DEFAULT 0,
       is_starred INTEGER NOT NULL DEFAULT 0,
@@ -41,6 +42,12 @@ export async function initDb() {
       FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
     );
   `);
+  // 旧版本 articles 表没有 categories 列，幂等迁移：列已存在时 ALTER 报错，忽略即可
+  try {
+    await db.execute("ALTER TABLE articles ADD COLUMN categories TEXT");
+  } catch {
+    /* 列已存在 */
+  }
 }
 
 function getDb() {
@@ -66,6 +73,8 @@ export interface Article {
   author: string | null;
   content: string | null;
   summary: string | null;
+  /** DB 中为逗号分隔字符串；后端 invoke 返回的是 string[] */
+  categories: string | null;
   published_at: string | null;
   is_read: boolean;
   is_starred: boolean;
@@ -102,8 +111,8 @@ export async function insertArticles(articles: Article[]): Promise<void> {
   const d = getDb();
   for (const a of articles) {
     await d.execute(
-      "INSERT OR IGNORE INTO articles (feed_id, title, url, author, content, summary, published_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [a.feed_id, a.title, a.url, a.author, a.content, a.summary, a.published_at]
+      "INSERT OR IGNORE INTO articles (feed_id, title, url, author, content, summary, categories, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [a.feed_id, a.title, a.url, a.author, a.content, a.summary, typeof a.categories === "string" ? a.categories : Array.isArray(a.categories) ? a.categories.join(", ") : null, a.published_at]
     );
   }
 }
