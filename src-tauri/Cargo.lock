@@ -2245,10 +2245,10 @@ dependencies = [
 name = "journal-assistant"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "chrono",
  "encoding_rs",
  "feed-rs",
+ "regex",
  "reqwest 0.12.28",
  "scraper",
  "serde",

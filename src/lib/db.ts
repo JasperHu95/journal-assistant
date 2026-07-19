@@ -1,5 +1,4 @@
 import Database from "@tauri-apps/plugin-sql";
-import { invoke } from "@tauri-apps/api/core";
 
 let db: InstanceType<typeof Database> | null = null;
 
@@ -136,14 +135,21 @@ export async function getFeedsWithArticleCount(): Promise<FeedWithCount[]> {
 }
 
 // Article CRUD
-export async function insertArticles(articles: Article[]): Promise<void> {
+// 插入文章并返回带数据库 ID 的文章列表（供调用方回写摘要等后续操作）；
+// INSERT OR IGNORE 跳过的重复行不在返回列表中
+export async function insertArticles(articles: Article[]): Promise<Article[]> {
   const d = getDb();
+  const inserted: Article[] = [];
   for (const a of articles) {
-    await d.execute(
+    const result = await d.execute(
       "INSERT OR IGNORE INTO articles (feed_id, title, url, author, content, summary, categories, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [a.feed_id, a.title, a.url, a.author, a.content, a.summary, typeof a.categories === "string" ? a.categories : Array.isArray(a.categories) ? a.categories.join(", ") : null, a.published_at]
     );
+    if (result.rowsAffected > 0 && result.lastInsertId != null) {
+      inserted.push({ ...a, id: result.lastInsertId });
+    }
   }
+  return inserted;
 }
 
 export async function getArticles(feedId?: number): Promise<Article[]> {
@@ -204,7 +210,7 @@ export async function getArticleTags(articleId: number): Promise<Tag[]> {
   );
 }
 
-// 设置项（key-value）读写，如 DeepSeek API Key
+// 设置项（key-value）读写
 export async function getSetting(key: string): Promise<string | null> {
   const d = getDb();
   const rows = await d.select<{ value: string }[]>(
@@ -220,23 +226,6 @@ export async function setSetting(key: string, value: string): Promise<void> {
     "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     [key, value]
   );
-}
-
-// 敏感设置项（如 DeepSeek API Key）的加密读写，加密/解密在 Rust 侧完成
-export async function setEncryptedSetting(key: string, value: string): Promise<void> {
-  const encrypted = await invoke<string>("encrypt_value", { plaintext: value });
-  await setSetting(key, encrypted);
-}
-
-export async function getEncryptedSetting(key: string): Promise<string | null> {
-  const raw = await getSetting(key);
-  if (!raw) return null;
-  try {
-    return await invoke<string>("decrypt_value", { ciphertext: raw });
-  } catch {
-    // 密文损坏（如旧版本明文残留）时视为未设置
-    return null;
-  }
 }
 
 /** 将 ISO 日期字符串格式化为本地可读形式（精确到分钟）；空值返回空串，无法解析时原样返回 */

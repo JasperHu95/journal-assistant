@@ -7,7 +7,7 @@ beforeEach(() => {
 
 describe("i18n", () => {
   it("t() returns correct Chinese translation", () => {
-    expect(t("nav.settings")).toBe("设置");
+    expect(t("nav.dashboard")).toBe("仪表盘");
   });
 
   it("t() returns key when key does not exist", () => {
@@ -22,7 +22,7 @@ describe("i18n", () => {
 
   it("setLang() switches language and t() returns the other language", () => {
     setLang("en");
-    expect(t("nav.settings")).toBe("Settings");
+    expect(t("nav.dashboard")).toBe("Dashboard");
   });
 
   it("setLang() ignores invalid language", () => {

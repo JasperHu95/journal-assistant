@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getFeeds, addFeed, deleteFeed, insertArticles, type Feed } from "../lib/db";
+  import { getFeeds, addFeed, deleteFeed, insertArticles, updateArticleSummary, type Feed } from "../lib/db";
   import { useI18n } from "../lib/useI18n.svelte";
   import { invoke } from "@tauri-apps/api/core";
 
@@ -9,6 +9,7 @@
   let feedMode = $state<"url" | "discover">("url");
   let loading = $state(false);
   let refreshing = $state<number | null>(null);
+  let extractProgress = $state<{ current: number; total: number } | null>(null);
   let error = $state("");
   let successMsg = $state("");
 
@@ -49,6 +50,7 @@
     refreshing = feed.id;
     error = "";
     successMsg = "";
+    extractProgress = null;
     try {
       const articles = await invoke<{ feed_id: number; title: string; url: string | null; author: string | null; content: string | null; summary: string | null; published_at: string | null }[]>(
         "refresh_feed",
@@ -56,12 +58,32 @@
       );
       // Assign the correct feed_id before inserting
       const withFeedId = articles.map(a => ({ ...a, feed_id: feed.id! }));
-      await insertArticles(withFeedId);
-      successMsg = localized("feeds.refresh_ok");
+      const inserted = await insertArticles(withFeedId);
+
+      // 学术期刊的 RSS 多不含摘要：对新插入且无摘要的文章逐篇抓取原文页面提取
+      const needSummary = inserted.filter(a => !a.summary && a.url && a.id != null);
+      let extracted = 0;
+      for (const [i, a] of needSummary.entries()) {
+        extractProgress = { current: i + 1, total: needSummary.length };
+        try {
+          const summary = await invoke<string>("extract_abstract", { url: a.url });
+          if (summary) {
+            await updateArticleSummary(a.id!, summary);
+            extracted++;
+          }
+        } catch {
+          // 单篇文章提取失败不影响整体
+        }
+      }
+
+      successMsg = extracted > 0
+        ? `${localized("feeds.refresh_ok")} (${extracted} ${localized("feeds.abstracts_extracted")})`
+        : localized("feeds.refresh_ok");
     } catch (e) {
       error = String(e);
     } finally {
       refreshing = null;
+      extractProgress = null;
     }
   }
 
@@ -132,7 +154,11 @@
             disabled={refreshing === feed.id}
             class="text-xs text-[#8B1A2B] hover:underline disabled:opacity-50"
           >
-            {refreshing === feed.id ? localized("feeds.refreshing") : localized("feeds.refresh")}
+            {refreshing === feed.id
+              ? extractProgress
+                ? `${localized("feeds.extracting")} ${extractProgress.current}/${extractProgress.total}`
+                : localized("feeds.refreshing")
+              : localized("feeds.refresh")}
           </button>
           <button
             onclick={() => handleDelete(feed.id!)}

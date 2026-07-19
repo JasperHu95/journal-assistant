@@ -10,9 +10,9 @@
     { path: "/", labelKey: "nav.dashboard" },
     { path: "/feeds", labelKey: "nav.feeds" },
     { path: "/articles", labelKey: "nav.articles" },
+    { path: "/catalog", labelKey: "nav.catalog" },
     { path: "/journals", labelKey: "nav.journals" },
     { path: "/tags", labelKey: "nav.tags" },
-    { path: "/settings", labelKey: "nav.settings" },
   ];
 </script>
 

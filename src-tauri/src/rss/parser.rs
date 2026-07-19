@@ -54,10 +54,18 @@ fn parse_entry(entry: &Entry) -> Article {
     let published_at = entry.published.or(entry.updated);
 
     // 正文：Atom content 或 RSS content:encoded
-    let content = entry.content.as_ref().and_then(|c| c.body.clone());
+    // 清除原始 HTML 标签，避免前端把 <p> 等标签当纯文本显示
+    let content = entry
+        .content
+        .as_ref()
+        .and_then(|c| c.body.clone())
+        .map(|b| strip_html(&b));
 
     // 摘要：Atom summary 或 RSS description（feed-rs 统一映射到 summary）
-    let summary = entry.summary.as_ref().map(|s| s.content.clone());
+    let summary = entry
+        .summary
+        .as_ref()
+        .map(|s| strip_html(&s.content));
 
     // 分类/标签：RSS category 与 Atom category 的 term
     let categories = entry
@@ -81,6 +89,48 @@ fn parse_entry(entry: &Entry) -> Article {
         is_starred: false,
         created_at: None,
     }
+}
+
+/// 清除 HTML 字符串中的标签并解码常见实体，返回可纯文本显示的内容。
+fn strip_html(input: &str) -> String {
+    use regex::Regex;
+    use std::sync::OnceLock;
+
+    // 先整体移除 script/style 标签及其内容，避免脚本样式文本混入正文
+    static BLOCK_RE: OnceLock<Regex> = OnceLock::new();
+    let block_re = BLOCK_RE.get_or_init(|| {
+        Regex::new(r"(?is)<(script|style)\b[^>]*>.*?</(script|style)>").unwrap()
+    });
+
+    // 匹配所有 HTML 标签
+    static TAG_RE: OnceLock<Regex> = OnceLock::new();
+    let tag_re = TAG_RE.get_or_init(|| Regex::new(r"<[^>]*>").unwrap());
+
+    // 压缩连续空白
+    static WS_RE: OnceLock<Regex> = OnceLock::new();
+    let ws_re = WS_RE.get_or_init(|| Regex::new(r"\s+").unwrap());
+
+    let no_blocks = block_re.replace_all(input, " ");
+    let no_tags = tag_re.replace_all(&no_blocks, " ");
+    let decoded = decode_entities(&no_tags);
+    ws_re.replace_all(decoded.trim(), " ").to_string()
+}
+
+/// 解码常见的 HTML 命名实体和数字实体。
+fn decode_entities(input: &str) -> String {
+    let mut out = input.to_string();
+    // &amp; 必须最后解码，否则 &amp;lt; 会被二次解码成 <
+    for (entity, ch) in [
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+        ("&quot;", "\""),
+        ("&apos;", "'"),
+        ("&#39;", "'"),
+        ("&nbsp;", " "),
+    ] {
+        out = out.replace(entity, ch);
+    }
+    out.replace("&amp;", "&")
 }
 
 /// 按优先级从 entry 中提取文章链接。
@@ -191,7 +241,8 @@ mod tests {
     <title>Atom Entry</title>
     <link rel="self" href="https://example.com/feed.xml"/>
     <link rel="alternate" href="https://example.com/entry/1"/>
-    <author><name>Li, Si</name><name>Wang, Wu</name></author>
+    <author><name>Li, Si</name></author>
+    <author><name>Wang, Wu</name></author>
     <published>2025-06-10T08:00:00Z</published>
     <updated>2025-06-11T08:00:00Z</updated>
     <summary>Summary here</summary>

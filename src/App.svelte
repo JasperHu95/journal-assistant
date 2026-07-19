@@ -4,8 +4,8 @@
   import FeedsPage from "./routes/FeedsPage.svelte";
   import ArticlesPage from "./routes/ArticlesPage.svelte";
   import JournalPage from "./routes/JournalPage.svelte";
+  import CatalogPage from "./routes/CatalogPage.svelte";
   import TagsPage from "./routes/TagsPage.svelte";
-  import SettingsPage from "./routes/SettingsPage.svelte";
   import { initDb } from "./lib/db";
   import { useI18n } from "./lib/useI18n.svelte";
 
@@ -49,12 +49,12 @@
       <FeedsPage />
     {:else if currentRoute === "/articles"}
       <ArticlesPage />
+    {:else if currentRoute === "/catalog"}
+      <CatalogPage />
     {:else if currentRoute === "/journals"}
       <JournalPage />
     {:else if currentRoute === "/tags"}
       <TagsPage />
-    {:else if currentRoute === "/settings"}
-      <SettingsPage />
     {/if}
   </main>
 </div>
