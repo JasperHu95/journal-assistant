@@ -1,15 +1,10 @@
 <script lang="ts">
   import { getArticles, getFeeds, getTags } from "../lib/db";
-  import { t, onLangChange } from "../lib/i18n";
+  import { useI18n } from "../lib/useI18n.svelte";
 
   let stats = $state({ feeds: 0, articles: 0, unread: 0, tags: 0 });
 
-  let langVersion = $state(0);
-  onLangChange(() => langVersion++);
-  function localized(key: string): string {
-    langVersion;
-    return t(key);
-  }
+  const localized = useI18n();
 
   $effect(() => {
     (async () => {

@@ -1,27 +1,21 @@
 <script lang="ts">
-  import { getSetting, setSetting } from "../lib/db";
-  import { t, onLangChange } from "../lib/i18n";
+  import { getEncryptedSetting, setEncryptedSetting } from "../lib/db";
+  import { useI18n } from "../lib/useI18n.svelte";
 
   let apiKey = $state("");
   let saved = $state(false);
 
-  // i18n 响应式
-  let langVersion = $state(0);
-  onLangChange(() => langVersion++);
-  function localized(key: string): string {
-    langVersion;
-    return t(key);
-  }
+  const localized = useI18n();
 
-  // 进入页面时读取已保存的 Key
+  // 进入页面时读取已保存的 Key（密文需解密）
   $effect(() => {
     (async () => {
-      apiKey = (await getSetting("deepseek_api_key")) ?? "";
+      apiKey = (await getEncryptedSetting("deepseek_api_key")) ?? "";
     })();
   });
 
   async function handleSave() {
-    await setSetting("deepseek_api_key", apiKey.trim());
+    await setEncryptedSetting("deepseek_api_key", apiKey.trim());
     saved = true;
     setTimeout(() => (saved = false), 2000);
   }

@@ -1,7 +1,9 @@
 use crate::models::{Article, Feed};
 use crate::rss::parser;
+use crate::rss::ssrf;
 use encoding_rs::Encoding;
 use reqwest::{Client, StatusCode};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 /// 浏览器风格 UA：不少期刊站点（Elsevier、Springer 等）会拦截脚本特征的默认 UA
@@ -9,12 +11,72 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
     AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 \
     JournalAssistant/0.1";
 
-/// 构建共享 HTTP client：超时、重定向策略、UA 统一在此配置
+/// 响应体大小上限：10MB。恶意 feed 可返回超大响应耗尽内存（OOM），
+/// 读取前查 Content-Length、读取后校验实际字节数，双重拦截。
+const MAX_RESPONSE_BYTES: u64 = 10 * 1024 * 1024;
+
+/// 抓取失败的原因分类，供调用方区分对待（如 SSRF 拦截 vs 普通网络错误）。
+#[derive(Debug)]
+pub(crate) enum FetchError {
+    /// SSRF 校验拦截（内网地址、非法 scheme 等）
+    Blocked(String),
+    /// 服务器返回非 200 状态码
+    Http(StatusCode),
+    /// 网络层错误（连接失败、超时、读取响应体失败等）
+    Network(String),
+    /// 编码转换或 feed 解析错误
+    Decode(String),
+    /// 响应体超过 MAX_RESPONSE_BYTES
+    TooLarge,
+}
+
+impl std::fmt::Display for FetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Blocked(msg) => write!(f, "Blocked: {}", msg),
+            Self::Http(status) => write!(f, "HTTP error: {}", status),
+            Self::Network(msg) => write!(f, "Network error: {}", msg),
+            Self::Decode(msg) => write!(f, "Decode error: {}", msg),
+            Self::TooLarge => write!(f, "Response too large"),
+        }
+    }
+}
+
+impl std::error::Error for FetchError {}
+
+/// 进程级共享的 HTTP client：懒初始化一次，后续所有请求复用同一连接池，
+/// 避免每次 fetch 都新建 Client（TCP/TLS 连接无法复用，开销大）。
+static CLIENT: OnceLock<Client> = OnceLock::new();
+
+/// 获取共享 HTTP client。初始化失败（如 TLS 后端不可用）属于不可恢复错误，直接 panic。
+pub(crate) fn get_client() -> &'static Client {
+    CLIENT.get_or_init(|| new_client().expect("Failed to build HTTP client"))
+}
+
+/// 兼容既有调用方的入口：返回共享 client 的 clone。
+/// reqwest::Client 内部是 Arc，clone 廉价且共享连接池与配置；新代码应直接用 get_client()。
 pub(crate) fn build_client() -> Result<Client, String> {
+    Ok(get_client().clone())
+}
+
+/// 构建 HTTP client：超时、重定向策略、UA 统一在此配置。
+/// 只应经由 get_client() 的 OnceLock 调用一次。
+fn new_client() -> Result<Client, String> {
+    // 自定义重定向策略：每次跳转的目标 URL 都重新过 validate_url 校验，
+    // 防止攻击者用 302 跳转到 169.254.x.x / 127.0.0.1 等内网地址绕过 SSRF 防护。
+    // 跳转上限保持 10：部分站点会多次 301/302（http->https、www 跳转等），给足余量
+    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
+        if ssrf::validate_url(attempt.url().as_str()).is_err() {
+            return attempt.stop();
+        }
+        if attempt.previous().len() >= 10 {
+            return attempt.error("too many redirects");
+        }
+        attempt.follow()
+    });
     Client::builder()
         .user_agent(USER_AGENT)
-        // 部分站点会多次 301/302（http->https、www 跳转等），给足跳转余量
-        .redirect(reqwest::redirect::Policy::limited(10))
+        .redirect(redirect_policy)
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(30))
         .build()
@@ -22,8 +84,12 @@ pub(crate) fn build_client() -> Result<Client, String> {
 }
 
 /// 请求 URL 并返回解码后的 UTF-8 文本。
-/// 负责状态码检查与编码转换，是 fetcher/discovery 的统一入口。
-pub(crate) async fn fetch_text(client: &Client, url: &str) -> Result<String, String> {
+/// 负责状态码检查、大小限制与编码转换，是 fetcher/discovery 的统一入口。
+pub(crate) async fn fetch_text(client: &Client, url: &str) -> Result<String, FetchError> {
+    // 已知限制（DNS rebinding）：validate_url 只校验 URL 字面 host，攻击者可通过
+    // 控制 DNS 把公网域名解析到内网 IP 来绕过校验。完整防护需要自定义 resolver
+    // 在连接建立时校验解析结果，留待后续版本实现，本次暂不做完整防护。
+    ssrf::validate_url(url).map_err(FetchError::Blocked)?;
     let response = client
         .get(url)
         // 声明可接受的 feed 类型，兼顾只认 Accept 头的服务器
@@ -34,12 +100,19 @@ pub(crate) async fn fetch_text(client: &Client, url: &str) -> Result<String, Str
         )
         .send()
         .await
-        .map_err(|e| format!("HTTP request failed: {}", e))?;
+        .map_err(|e| FetchError::Network(e.to_string()))?;
 
     // 先检查状态码，避免把 404/500 的错误页当成 feed 去解析
     let status = response.status();
     if status != StatusCode::OK {
-        return Err(format!("HTTP request returned status {}", status));
+        return Err(FetchError::Http(status));
+    }
+
+    // 读取前先看 Content-Length：超限直接拒绝，避免把超大响应拉进内存
+    if let Some(len) = response.content_length() {
+        if len > MAX_RESPONSE_BYTES {
+            return Err(FetchError::TooLarge);
+        }
     }
 
     // 从 Content-Type 头提取 charset，作为编码检测的依据之一
@@ -57,7 +130,12 @@ pub(crate) async fn fetch_text(client: &Client, url: &str) -> Result<String, Str
     let bytes = response
         .bytes()
         .await
-        .map_err(|e| format!("Failed to read response bytes: {}", e))?;
+        .map_err(|e| FetchError::Network(e.to_string()))?;
+
+    // Content-Length 可能缺失或被伪造，读完后再校验一次实际大小
+    if bytes.len() as u64 > MAX_RESPONSE_BYTES {
+        return Err(FetchError::TooLarge);
+    }
 
     Ok(decode_to_utf8(&bytes, header_charset.as_deref()))
 }
@@ -167,33 +245,34 @@ fn normalize_xml_declaration(text: String) -> String {
     let Some(enc_pos) = decl_lower.find("encoding=") else {
         return text; // 声明中无 encoding，无需改写
     };
-    let after_eq = &decl[enc_pos + "encoding=".len()..];
-    let Some(quote) = after_eq.trim_start().chars().next() else {
+    // 定位 encoding 后的 '='（"encoding=" 中必然含 '='，unwrap 不会 panic）
+    let eq_pos = decl_lower[enc_pos..].find('=').unwrap() + enc_pos;
+    // 用 find 直接定位 '=' 之后第一个引号的位置（引号前可能有空白）
+    let after_eq = &decl[eq_pos + 1..];
+    let Some(quote_off) = after_eq.find(|c: char| c == '"' || c == '\'') else {
         return text;
     };
-    if quote != '"' && quote != '\'' {
-        return text;
-    }
-    // 找到引号对的起止位置，整体替换为 "UTF-8"
-    let val_start = enc_pos + "encoding=".len() + (after_eq.len() - after_eq.trim_start().len());
-    let val_inner_start = val_start + 1;
-    let Some(val_len) = decl[val_inner_start..].find(quote) else {
+    let quote_pos = eq_pos + 1 + quote_off;
+    let quote = decl.as_bytes()[quote_pos];
+    // 从引号后找配对的闭合引号，确定 value 范围
+    let Some(val_len) = decl[quote_pos + 1..].find(quote as char) else {
         return text;
     };
 
+    // 将引号对（含 value）整体替换为 "UTF-8"
     format!(
         "{}\"UTF-8\"{}",
-        &text[..start + val_start],
-        &text[start + val_inner_start + val_len + 1..]
+        &text[..start + quote_pos],
+        &text[start + quote_pos + 1 + val_len + 1..]
     )
 }
 
 /// Fetch the feed metadata (title, description, link) from a feed URL.
-pub async fn fetch_feed_metadata(url: &str) -> Result<Feed, String> {
-    let client = build_client()?;
-    let text = fetch_text(&client, url).await?;
+pub async fn fetch_feed_metadata(url: &str) -> Result<Feed, FetchError> {
+    let text = fetch_text(get_client(), url).await?;
 
-    let (title, description, link) = parser::parse_feed_metadata(text.as_bytes())?;
+    let (title, description, link) =
+        parser::parse_feed_metadata(text.as_bytes()).map_err(FetchError::Decode)?;
 
     Ok(Feed {
         id: None,
@@ -208,12 +287,11 @@ pub async fn fetch_feed_metadata(url: &str) -> Result<Feed, String> {
 
 /// Fetch the latest articles from a feed URL.
 /// feed_id is set to 0 as a placeholder; the frontend assigns the real ID before storing.
-pub async fn fetch_articles(feed_url: &str) -> Result<Vec<Article>, String> {
-    let client = build_client()?;
-    let text = fetch_text(&client, feed_url).await?;
+pub async fn fetch_articles(feed_url: &str) -> Result<Vec<Article>, FetchError> {
+    let text = fetch_text(get_client(), feed_url).await?;
 
     // feed_id placeholder: frontend sets the correct ID after lookup
-    parser::parse_feed_bytes(0, text.as_bytes())
+    parser::parse_feed_bytes(0, text.as_bytes()).map_err(FetchError::Decode)
 }
 
 #[cfg(test)]
@@ -243,5 +321,41 @@ mod tests {
     fn test_sniff_html_meta_charset() {
         let html = b"<html><head><meta charset=\"gbk\"></head><body></body></html>";
         assert_eq!(sniff_declared_encoding(html).as_deref(), Some("gbk"));
+    }
+
+    #[test]
+    fn test_normalize_xml_declaration() {
+        let cases: &[(&str, &str)] = &[
+            // 无 encoding 声明：原样返回
+            (
+                r#"<?xml version="1.0"?><rss version="2.0"/>"#,
+                r#"<?xml version="1.0"?><rss version="2.0"/>"#,
+            ),
+            // 双引号 encoding="GB2312"：替换为 UTF-8
+            (
+                r#"<?xml version="1.0" encoding="GB2312"?><rss version="2.0"/>"#,
+                r#"<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"/>"#,
+            ),
+            // 单引号 encoding='GBK'：替换为 UTF-8（统一输出双引号）
+            (
+                "<?xml version='1.0' encoding='GBK'?><rss version=\"2.0\"/>",
+                r#"<?xml version='1.0' encoding="UTF-8"?><rss version="2.0"/>"#,
+            ),
+            // 声明不全（无 ?>）：原样返回
+            (
+                r#"<?xml version="1.0" encoding="GB2312"#,
+                r#"<?xml version="1.0" encoding="GB2312"#,
+            ),
+            // 空字符串：返回空
+            ("", ""),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(
+                normalize_xml_declaration(input.to_string()),
+                *expected,
+                "input: {}",
+                input
+            );
+        }
     }
 }

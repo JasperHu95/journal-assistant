@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { t, toggleLang, onLangChange } from "../lib/i18n";
+  import { toggleLang } from "../lib/i18n";
+  import { useI18n } from "../lib/useI18n.svelte";
 
   let { currentRoute, navigate } = $props();
 
-  // Force re-render when language changes
-  let langVersion = $state(0);
-  onLangChange(() => langVersion++);
+  const localized = useI18n();
 
   const navItems = [
     { path: "/", labelKey: "nav.dashboard" },
@@ -15,11 +14,6 @@
     { path: "/tags", labelKey: "nav.tags" },
     { path: "/settings", labelKey: "nav.settings" },
   ];
-
-  function localized(key: string): string {
-    langVersion; // subscribe to changes
-    return t(key);
-  }
 </script>
 
 <aside class="w-60 bg-[#F5F0E8] border-r border-[#D4C8B0] flex flex-col">

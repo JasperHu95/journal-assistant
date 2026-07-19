@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getFeeds, addFeed, deleteFeed, insertArticles, type Feed } from "../lib/db";
-  import { t, onLangChange } from "../lib/i18n";
+  import { useI18n } from "../lib/useI18n.svelte";
   import { invoke } from "@tauri-apps/api/core";
 
   let feeds = $state<Feed[]>([]);
@@ -12,13 +12,7 @@
   let error = $state("");
   let successMsg = $state("");
 
-  // i18n reactivity
-  let langVersion = $state(0);
-  onLangChange(() => langVersion++);
-  function localized(key: string): string {
-    langVersion;
-    return t(key);
-  }
+  const localized = useI18n();
 
   async function loadFeeds() { feeds = await getFeeds(); }
   $effect(() => { loadFeeds(); });
@@ -44,7 +38,8 @@
       showAdd = false;
       await loadFeeds();
     } catch (e) {
-      error = String(e);
+      console.error(String(e));
+      error = localized("error.fetch_failed");
     } finally {
       loading = false;
     }
@@ -71,6 +66,7 @@
   }
 
   async function handleDelete(id: number) {
+    if (!confirm(localized("common.confirm_delete"))) return;
     await deleteFeed(id);
     await loadFeeds();
   }

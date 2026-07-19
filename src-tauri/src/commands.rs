@@ -1,5 +1,34 @@
 use crate::models::{Article, DiscoveredFeed, Feed};
 use crate::rss::{discovery, extract, fetcher};
+use base64::{engine::general_purpose, Engine as _};
+
+/// 简单 XOR 加密/解密密钥（来自 app identifier）
+const XOR_KEY: &[u8] = b"journal-assistant-v2";
+
+/// XOR 加密后 base64 编码，用于 API Key 等敏感设置项的存储
+#[tauri::command]
+pub fn encrypt_value(plaintext: String) -> String {
+    let encrypted: Vec<u8> = plaintext
+        .bytes()
+        .zip(XOR_KEY.iter().cycle())
+        .map(|(b, k)| b ^ k)
+        .collect();
+    general_purpose::STANDARD.encode(&encrypted)
+}
+
+/// base64 解码后 XOR 解密；密文损坏时返回错误
+#[tauri::command]
+pub fn decrypt_value(ciphertext: String) -> Result<String, String> {
+    let bytes = general_purpose::STANDARD
+        .decode(&ciphertext)
+        .map_err(|e| format!("Invalid ciphertext: {}", e))?;
+    let decrypted: Vec<u8> = bytes
+        .iter()
+        .zip(XOR_KEY.iter().cycle())
+        .map(|(b, k)| b ^ k)
+        .collect();
+    String::from_utf8(decrypted).map_err(|e| format!("Decryption failed: {}", e))
+}
 
 /// Fetch and parse an RSS feed from a URL. Returns feed metadata.
 /// The frontend is responsible for storing the result in SQLite.

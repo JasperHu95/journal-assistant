@@ -7,19 +7,13 @@
   import TagsPage from "./routes/TagsPage.svelte";
   import SettingsPage from "./routes/SettingsPage.svelte";
   import { initDb } from "./lib/db";
-  import { t, onLangChange } from "./lib/i18n";
+  import { useI18n } from "./lib/useI18n.svelte";
 
   let currentRoute = $state("/");
   let dbReady = $state(false);
   let dbError = $state("");
 
-  // i18n reactivity
-  let langVersion = $state(0);
-  onLangChange(() => langVersion++);
-  function localized(key: string): string {
-    langVersion;
-    return t(key);
-  }
+  const localized = useI18n();
 
   $effect(() => {
     initDb()

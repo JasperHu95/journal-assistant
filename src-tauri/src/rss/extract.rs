@@ -1,5 +1,5 @@
 use crate::rss::fetcher;
-use reqwest::Url;
+use crate::rss::ssrf;
 use scraper::{Html, Selector};
 
 /// 视为有效摘要段落的最小字符数：过短的 <p> 多为导航、版权等噪声
@@ -9,25 +9,11 @@ const MIN_PARAGRAPH_LEN: usize = 50;
 /// 复用 fetcher 的 client 与解码逻辑：UA/超时/重定向/中文编码处理一致。
 pub async fn extract_abstract_from_url(url: &str) -> Result<String, String> {
     // SSRF 防护：仅允许 http/https，拒绝 localhost 与私有/内网地址
-    let parsed = Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
-    match parsed.scheme() {
-        "http" | "https" => {}
-        scheme => return Err(format!("Unsupported URL scheme: {}", scheme)),
-    }
-    if let Some(host) = parsed.host_str() {
-        if host == "localhost"
-            || host == "127.0.0.1"
-            || host == "0.0.0.0"
-            || host.starts_with("169.254.")
-            || host.starts_with("10.")
-            || host.starts_with("192.168.")
-            || host.starts_with("172.")
-        {
-            return Err("Private/internal addresses are not allowed".to_string());
-        }
-    }
+    ssrf::validate_url(url)?;
     let client = fetcher::build_client()?;
-    let body = fetcher::fetch_text(&client, url).await?;
+    let body = fetcher::fetch_text(&client, url)
+        .await
+        .map_err(|e| e.to_string())?;
     extract_from_html(&body)
 }
 

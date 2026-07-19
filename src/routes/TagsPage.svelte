@@ -1,17 +1,12 @@
 <script lang="ts">
   import { getTags, createTag, deleteTag, type Tag } from "../lib/db";
-  import { t, onLangChange } from "../lib/i18n";
+  import { useI18n } from "../lib/useI18n.svelte";
 
   let tags = $state<Tag[]>([]);
   let newName = $state("");
   let newColor = $state("#8B1A2B");
 
-  let langVersion = $state(0);
-  onLangChange(() => langVersion++);
-  function localized(key: string): string {
-    langVersion;
-    return t(key);
-  }
+  const localized = useI18n();
 
   async function loadTags() { tags = await getTags(); }
   $effect(() => { loadTags(); });
@@ -24,6 +19,7 @@
   }
 
   async function handleDelete(id: number) {
+    if (!confirm(localized("common.confirm_delete"))) return;
     await deleteTag(id);
     await loadTags();
   }

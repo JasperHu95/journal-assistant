@@ -16,6 +16,7 @@ encoding_rs = "0.8"
 scraper = "0.20"
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

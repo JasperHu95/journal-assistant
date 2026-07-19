@@ -1,5 +1,6 @@
 use crate::models::DiscoveredFeed;
 use crate::rss::fetcher;
+use crate::rss::ssrf;
 use scraper::{Html, Selector};
 
 /// 已知的 feed MIME 类型（统一小写后比较）
@@ -14,9 +15,13 @@ const FEED_MIME_TYPES: &[&str] = &[
 
 /// Discover RSS/Atom feed URLs from an HTML page at the given URL.
 pub async fn discover_feeds_from_url(url: &str) -> Result<Vec<DiscoveredFeed>, String> {
+    // SSRF 防护：仅允许 http/https，拒绝 localhost 与私有/内网地址
+    ssrf::validate_url(url)?;
     // 复用 fetcher 的 client 与解码逻辑：UA/超时/重定向/中文编码处理一致
     let client = fetcher::build_client()?;
-    let body = fetcher::fetch_text(&client, url).await?;
+    let body = fetcher::fetch_text(&client, url)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let document = Html::parse_document(&body);
 

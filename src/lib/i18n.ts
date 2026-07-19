@@ -55,6 +55,10 @@ const zh: Translations = {
   "lang.switch": "Switch to English",
   "common.loading": "加载中...",
   "common.db_error": "数据库错误",
+  "common.confirm_delete": "确定要删除吗？此操作不可撤销。",
+  "error.fetch_failed": "获取失败，请检查网络或订阅地址",
+  "error.extract_failed": "摘要提取失败",
+  "error.translate_failed": "翻译失败",
   "version": "v0.1.0",
 };
 

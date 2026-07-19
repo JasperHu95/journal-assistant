@@ -1,4 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
+import { invoke } from "@tauri-apps/api/core";
 
 let db: InstanceType<typeof Database> | null = null;
 
@@ -212,4 +213,35 @@ export async function setSetting(key: string, value: string): Promise<void> {
     "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     [key, value]
   );
+}
+
+// 敏感设置项（如 DeepSeek API Key）的加密读写，加密/解密在 Rust 侧完成
+export async function setEncryptedSetting(key: string, value: string): Promise<void> {
+  const encrypted = await invoke<string>("encrypt_value", { plaintext: value });
+  await setSetting(key, encrypted);
+}
+
+export async function getEncryptedSetting(key: string): Promise<string | null> {
+  const raw = await getSetting(key);
+  if (!raw) return null;
+  try {
+    return await invoke<string>("decrypt_value", { ciphertext: raw });
+  } catch {
+    // 密文损坏（如旧版本明文残留）时视为未设置
+    return null;
+  }
+}
+
+/** 将 ISO 日期字符串格式化为本地可读形式（精确到分钟）；空值返回空串，无法解析时原样返回 */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return iso;
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
