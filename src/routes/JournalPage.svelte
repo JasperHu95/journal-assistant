@@ -62,6 +62,7 @@
       article.summary = summary;
     } catch (e) {
       console.error("Failed to extract abstract:", e);
+      extractError = String(e);
     } finally {
       extracting = false;
     }
@@ -71,6 +72,7 @@
   async function handleTranslate() {
     const article = selected;
     if (!article?.summary || translating) return;
+    const articleId = article.id;
     translating = true;
     translateError = "";
     translation = "";
@@ -81,11 +83,14 @@
         return;
       }
       const targetLang = getLang() === "zh" ? "中文" : "English";
-      translation = await invoke<string>("translate_text", {
+      const result = await invoke<string>("translate_text", {
         text: article.summary,
         apiKey,
         targetLang,
       });
+      // 翻译期间若用户切换了文章，丢弃过期结果，避免错位
+      if (selected?.id !== articleId) return;
+      translation = result;
     } catch (e) {
       console.error("Failed to translate:", e);
       translateError = String(e);

@@ -56,6 +56,7 @@
   async function handleTranslate() {
     const article = selected;
     if (!article?.summary || translating) return;
+    const articleId = article.id;
     translating = true;
     translateError = "";
     translation = "";
@@ -66,11 +67,14 @@
         return;
       }
       const targetLang = getLang() === "zh" ? "中文" : "English";
-      translation = await invoke<string>("translate_text", {
+      const result = await invoke<string>("translate_text", {
         text: article.summary,
         apiKey,
         targetLang,
       });
+      // 翻译期间若用户切换了文章，丢弃过期结果，避免错位
+      if (selected?.id !== articleId) return;
+      translation = result;
     } catch (e) {
       console.error("Failed to translate:", e);
       translateError = String(e);
@@ -122,6 +126,22 @@
       </div>
       {#if selected.summary}
         <p class="text-sm text-[#2C2416] leading-relaxed whitespace-pre-wrap">{selected.summary}</p>
+        <button
+          onclick={handleTranslate}
+          disabled={translating}
+          class="mt-4 px-4 py-2 bg-[#8B1A2B] text-white text-sm hover:bg-[#6d1522] disabled:opacity-50 transition-colors"
+        >
+          {translating ? localized("articles.translating") : localized("articles.translate")}
+        </button>
+        {#if translation}
+          <div class="mt-4 p-4 bg-[#F5F0E8] border border-[#D4C8B0]">
+            <p class="text-xs font-medium text-[#6B5E4A] mb-2">{localized("articles.translated")}</p>
+            <p class="text-sm text-[#2C2416] leading-relaxed whitespace-pre-wrap">{translation}</p>
+          </div>
+        {/if}
+        {#if translateError}
+          <p class="mt-2 text-xs text-red-600">{translateError}</p>
+        {/if}
       {:else if selected.url}
         <button
           onclick={handleExtract}
