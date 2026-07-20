@@ -2,7 +2,6 @@
   import Sidebar from "./components/Sidebar.svelte";
   import Dashboard from "./routes/Dashboard.svelte";
   import FeedsPage from "./routes/FeedsPage.svelte";
-  import ArticlesPage from "./routes/ArticlesPage.svelte";
   import JournalPage from "./routes/JournalPage.svelte";
   import CatalogPage from "./routes/CatalogPage.svelte";
   import TagsPage from "./routes/TagsPage.svelte";
@@ -47,8 +46,6 @@
       <Dashboard />
     {:else if currentRoute === "/feeds"}
       <FeedsPage />
-    {:else if currentRoute === "/articles"}
-      <ArticlesPage />
     {:else if currentRoute === "/catalog"}
       <CatalogPage />
     {:else if currentRoute === "/journals"}

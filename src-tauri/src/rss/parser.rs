@@ -92,7 +92,8 @@ fn parse_entry(entry: &Entry) -> Article {
 }
 
 /// 清除 HTML 字符串中的标签并解码常见实体，返回可纯文本显示的内容。
-fn strip_html(input: &str) -> String {
+/// pub(crate)：extract 模块清理 CrossRef 返回的 JATS XML 摘要时复用。
+pub(crate) fn strip_html(input: &str) -> String {
     use regex::Regex;
     use std::sync::OnceLock;
 

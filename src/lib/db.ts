@@ -98,9 +98,10 @@ export interface Tag {
   color: string | null;
 }
 
-/** Feed 及其文章数（期刊视图用） */
+/** Feed 及其文章数、未读数（期刊视图用） */
 export interface FeedWithCount extends Feed {
   article_count: number;
+  unread_count: number;
 }
 
 // Feed CRUD
@@ -122,11 +123,12 @@ export async function deleteFeed(id: number): Promise<void> {
   await d.execute("DELETE FROM feeds WHERE id = ?", [id]);
 }
 
-// 期刊视图：查询所有 feed 并附带各自的文章数
+// 期刊视图：查询所有 feed 并附带各自的文章数和未读数
 export async function getFeedsWithArticleCount(): Promise<FeedWithCount[]> {
   const d = getDb();
   return await d.select<FeedWithCount[]>(
-    `SELECT f.*, COUNT(a.id) AS article_count
+    `SELECT f.*, COUNT(a.id) AS article_count,
+            COALESCE(SUM(CASE WHEN a.is_read = 0 THEN 1 ELSE 0 END), 0) AS unread_count
      FROM feeds f
      LEFT JOIN articles a ON a.feed_id = f.id
      GROUP BY f.id

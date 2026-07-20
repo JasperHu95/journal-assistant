@@ -8,9 +8,8 @@
 
   const navItems = [
     { path: "/", labelKey: "nav.dashboard" },
+    { path: "/catalog", labelKey: "nav.builtin_rss" },
     { path: "/feeds", labelKey: "nav.feeds" },
-    { path: "/articles", labelKey: "nav.articles" },
-    { path: "/catalog", labelKey: "nav.catalog" },
     { path: "/journals", labelKey: "nav.journals" },
     { path: "/tags", labelKey: "nav.tags" },
   ];

@@ -1,14 +1,17 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { CATEGORIES, JOURNAL_CATALOG, type CatalogJournal } from "../lib/journal-catalog";
-  import { getFeeds, addFeed, deleteFeed, type Feed } from "../lib/db";
+  import { getFeeds, addFeed, deleteFeed, insertArticles, updateArticleSummary, type Feed } from "../lib/db";
   import { useI18n } from "../lib/useI18n.svelte";
 
   // 空字符串表示"全部分类"
   let selectedCategory = $state("");
   let feeds = $state<Feed[]>([]);
   let pendingUrl = $state<string | null>(null);
+  let refreshingUrl = $state<string | null>(null);
+  let extractProgress = $state<{ current: number; total: number } | null>(null);
   let error = $state("");
+  let successMsg = $state("");
 
   const localized = useI18n();
 
@@ -53,6 +56,48 @@
       pendingUrl = null;
     }
   }
+
+  // 刷新已订阅期刊并自动提取摘要
+  async function handleRefresh(journal: CatalogJournal) {
+    const feed = feeds.find((f) => f.url === journal.rssUrl);
+    if (!feed || feed.id == null) return;
+    refreshingUrl = journal.rssUrl;
+    error = "";
+    successMsg = "";
+    extractProgress = null;
+    try {
+      const articles = await invoke<{ feed_id: number; title: string; url: string | null; author: string | null; content: string | null; summary: string | null; published_at: string | null }[]>(
+        "refresh_feed",
+        { feedUrl: journal.rssUrl }
+      );
+      const withFeedId = articles.map(a => ({ ...a, feed_id: feed.id! }));
+      const inserted = await insertArticles(withFeedId);
+      // 对无摘要的新文章自动提取
+      const needSummary = inserted.filter(a => !a.summary && a.url && a.id != null);
+      let extracted = 0;
+      for (const [i, a] of needSummary.entries()) {
+        extractProgress = { current: i + 1, total: needSummary.length };
+        try {
+          const summary = await invoke<string>("extract_abstract", { url: a.url });
+          if (summary) {
+            await updateArticleSummary(a.id!, summary);
+            extracted++;
+          }
+        } catch {
+          // 单篇失败不影响整体
+        }
+      }
+      successMsg = extracted > 0
+        ? `${journal.name}: ${localized("feeds.refresh_ok")} (${extracted} ${localized("feeds.abstracts_extracted")})`
+        : `${journal.name}: ${localized("feeds.refresh_ok")}`;
+    } catch (e) {
+      console.error(String(e));
+      error = localized("error.fetch_failed");
+    } finally {
+      refreshingUrl = null;
+      extractProgress = null;
+    }
+  }
 </script>
 
 <div class="flex h-full">
@@ -88,6 +133,9 @@
     {#if error}
       <p class="text-sm text-red-700 mb-4">{error}</p>
     {/if}
+    {#if successMsg}
+      <p class="text-sm text-green-700 mb-4">{successMsg}</p>
+    {/if}
 
     <div class="space-y-0">
       {#each visibleJournals as journal}
@@ -97,14 +145,29 @@
             <p class="font-medium text-[#2C2416] text-sm">{journal.name}</p>
             <p class="text-xs text-[#6B5E4A] mt-0.5">ISSN {journal.issn}</p>
           </div>
-          <button
-            onclick={() => subscribed ? handleUnsubscribe(journal) : handleSubscribe(journal)}
-            disabled={pendingUrl === journal.rssUrl}
-            class="ml-4 shrink-0 px-4 py-1.5 text-xs text-white transition-colors disabled:opacity-50
-              {subscribed ? 'bg-[#3D6B4F] hover:bg-[#2f5540]' : 'bg-[#8B1A2B] hover:bg-[#6d1522]'}"
-          >
-            {subscribed ? localized("catalog.subscribed") : localized("catalog.subscribe")}
-          </button>
+          <div class="flex items-center gap-2 ml-4 shrink-0">
+            {#if subscribed}
+              <button
+                onclick={() => handleRefresh(journal)}
+                disabled={refreshingUrl === journal.rssUrl}
+                class="text-xs text-[#8B1A2B] hover:underline disabled:opacity-50"
+              >
+                {refreshingUrl === journal.rssUrl
+                  ? extractProgress
+                    ? `${localized("feeds.extracting")} ${extractProgress.current}/${extractProgress.total}`
+                    : localized("feeds.refreshing")
+                  : localized("catalog.refresh")}
+              </button>
+            {/if}
+            <button
+              onclick={() => subscribed ? handleUnsubscribe(journal) : handleSubscribe(journal)}
+              disabled={pendingUrl === journal.rssUrl}
+              class="px-4 py-1.5 text-xs text-white transition-colors disabled:opacity-50
+                {subscribed ? 'bg-[#3D6B4F] hover:bg-[#2f5540]' : 'bg-[#8B1A2B] hover:bg-[#6d1522]'}"
+            >
+              {subscribed ? localized("catalog.subscribed") : localized("catalog.subscribe")}
+            </button>
+          </div>
         </div>
       {/each}
     </div>
