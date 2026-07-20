@@ -17,16 +17,20 @@
 
   const localized = useI18n();
 
+  // 刷新 App 层的期刊列表（供 CatalogPage/FeedsPage 订阅变更后调用）
+  async function refreshFeeds() {
+    try {
+      feeds = await getFeedsWithArticleCount();
+    } catch (e) {
+      console.error("Failed to load feeds:", e);
+    }
+  }
+
   $effect(() => {
     initDb()
       .then(async () => {
         dbReady = true;
-        try {
-          feeds = await getFeedsWithArticleCount();
-        } catch (e) {
-          console.error("Failed to load feeds:", e);
-          feeds = [];
-        }
+        await refreshFeeds();
       })
       .catch((e) => {
         console.error("Database init failed:", e);
@@ -60,9 +64,9 @@
     {:else if currentRoute === "/"}
       <Dashboard />
     {:else if currentRoute === "/feeds"}
-      <FeedsPage />
+      <FeedsPage {refreshFeeds} />
     {:else if currentRoute === "/catalog"}
-      <CatalogPage />
+      <CatalogPage {refreshFeeds} />
     {:else if currentRoute === "/journals"}
       <JournalPage {feeds} {selectedFeedId} />
     {:else if currentRoute === "/tags"}

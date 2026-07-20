@@ -8,6 +8,7 @@
   let feedUrl = $state("");
   let feedMode = $state<"url" | "discover">("url");
   let loading = $state(false);
+  let { refreshFeeds }: { refreshFeeds: () => Promise<void> } = $props();
   let refreshing = $state<number | null>(null);
   let extractProgress = $state<{ current: number; total: number } | null>(null);
   let error = $state("");
@@ -38,6 +39,7 @@
       feedUrl = "";
       showAdd = false;
       await loadFeeds();
+    await refreshFeeds();
     } catch (e) {
       console.error(String(e));
       error = localized("error.fetch_failed");
@@ -91,6 +93,7 @@
     if (!confirm(localized("common.confirm_delete"))) return;
     await deleteFeed(id);
     await loadFeeds();
+    await refreshFeeds();
   }
 </script>
 

@@ -10,6 +10,7 @@
   let pendingUrl = $state<string | null>(null);
   let refreshingUrl = $state<string | null>(null);
   let extractProgress = $state<{ current: number; total: number } | null>(null);
+  let { refreshFeeds }: { refreshFeeds: () => Promise<void> } = $props();
   let error = $state("");
   let successMsg = $state("");
 
@@ -32,6 +33,7 @@
       const result = await invoke<Feed>("add_feed", { url: journal.rssUrl });
       await addFeed(result);
       await loadFeeds();
+      await refreshFeeds();
     } catch (e) {
       console.error(String(e));
       error = localized("error.fetch_failed");
@@ -49,6 +51,7 @@
     try {
       await deleteFeed(feed.id);
       await loadFeeds();
+      await refreshFeeds();
     } catch (e) {
       console.error(String(e));
       error = localized("error.fetch_failed");
