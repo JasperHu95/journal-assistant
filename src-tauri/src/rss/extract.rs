@@ -7,16 +7,24 @@ use scraper::{Html, Selector};
 const MIN_PARAGRAPH_LEN: usize = 50;
 
 /// 从文章 URL 提取摘要文本。
-/// 多数学术期刊站点有反爬机制，直接抓页面常失败，因此优先走 CrossRef API：
-/// 1. URL 本身含 DOI（doi.org 链接或出版社 /doi/ 路径）-> 直接查 CrossRef
-/// 2. 抓取页面，从 meta 标签（citation_doi 等）提取 DOI -> 查 CrossRef
+/// 多数学术期刊站点有反爬机制，直接抓页面常失败，因此优先走 DOI 查询：
+/// 0. 调用方已提供 DOI（RSS 解析阶段从 guid/链接提取）-> 直接查 OpenAlex/CrossRef
+/// 1. URL 本身含 DOI（doi.org 链接或出版社 /doi/ 路径）-> 直接查 OpenAlex/CrossRef
+/// 2. 抓取页面，从 meta 标签（citation_doi 等）提取 DOI -> 查 OpenAlex/CrossRef
 /// 3. 以上均失败 -> 从 HTML 提取 meta description 或首个实质段落
-pub async fn extract_abstract_from_url(url: &str) -> Result<String, String> {
+pub async fn extract_abstract_from_url(url: &str, doi: Option<&str>) -> Result<String, String> {
     // SSRF 防护：仅允许 http/https，拒绝 localhost 与私有/内网地址
     ssrf::validate_url(url)?;
     let client = fetcher::get_client();
 
-    // 策略1：URL 中可直接提取 DOI 时，免去抓页面，直接查 CrossRef
+    // 策略0：RSS 条目自带 DOI，免去抓页面，直接查 OpenAlex/CrossRef
+    if let Some(d) = doi {
+        if let Ok(abstract_text) = fetch_abstract_from_doi(client, d).await {
+            return Ok(abstract_text);
+        }
+    }
+
+    // 策略1：URL 中可直接提取 DOI 时，免去抓页面，直接查 OpenAlex/CrossRef
     if let Some(doi) = extract_doi(url) {
         if let Ok(abstract_text) = fetch_abstract_from_doi(client, &doi).await {
             return Ok(abstract_text);
@@ -28,7 +36,7 @@ pub async fn extract_abstract_from_url(url: &str) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    // 策略2a：页面 meta 标签中声明了 DOI，查 CrossRef 拿结构化摘要
+    // 策略2a：页面 meta 标签中声明了 DOI，查 OpenAlex/CrossRef 拿结构化摘要
     if let Some(doi) = extract_doi_from_html(&body) {
         if let Ok(abstract_text) = fetch_abstract_from_doi(client, &doi).await {
             return Ok(abstract_text);
@@ -42,12 +50,15 @@ pub async fn extract_abstract_from_url(url: &str) -> Result<String, String> {
 /// 从 URL 中提取 DOI。
 /// 覆盖 doi.org 链接与出版社页面路径中内嵌的 DOI（如 /doi/full/10.xxxx/...），
 /// DOI 模式本身（10. + 4-9 位注册号 + / 后缀）在 URL 中足够特异，直接正则匹配即可。
-fn extract_doi(url: &str) -> Option<String> {
+/// pub(crate)：parser 模块从条目 guid/链接中提取 DOI 时复用。
+pub(crate) fn extract_doi(url: &str) -> Option<String> {
     use regex::Regex;
     use std::sync::OnceLock;
 
+    // 字符类排除 &：DOI 出现在 URL 查询参数中时（如 ?id=10.1257/...&foo=bar），
+    // 避免把后续参数吞进 DOI
     static DOI_RE: OnceLock<Regex> = OnceLock::new();
-    let re = DOI_RE.get_or_init(|| Regex::new(r#"10\.\d{4,9}/[^\s?#"'<>]+"#).unwrap());
+    let re = DOI_RE.get_or_init(|| Regex::new(r#"10\.\d{4,9}/[^\s?#"'<>&]+"#).unwrap());
 
     let m = re.find(url)?;
     // 匹配可能带入 URL 的尾部标点（句点、逗号、斜杠等），DOI 本身不会以这些字符结尾
@@ -77,8 +88,27 @@ fn extract_doi_from_html(html: &str) -> Option<String> {
     None
 }
 
-/// 通过 CrossRef API 按 DOI 查询摘要。CrossRef 为开放 API，无需认证。
+/// 按 DOI 查询摘要。优先 OpenAlex（摘要覆盖率高于 CrossRef），失败或无摘要时回退 CrossRef。
+/// 两者均为开放 API，无需认证。
 async fn fetch_abstract_from_doi(client: &reqwest::Client, doi: &str) -> Result<String, String> {
+    // 策略1：OpenAlex，摘要放在 abstract_inverted_index（倒排索引）中
+    let url = format!("https://api.openalex.org/works/doi:{}", doi);
+    if let Ok(response) = client
+        .get(&url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+    {
+        if response.status().is_success() {
+            if let Ok(json) = response.json::<serde_json::Value>().await {
+                if let Some(abstract_text) = parse_openalex_abstract(&json) {
+                    return Ok(abstract_text);
+                }
+            }
+        }
+    }
+
+    // 策略2：CrossRef 后备
     let url = format!("https://api.crossref.org/works/{}", doi);
     let response = client
         .get(&url)
@@ -97,6 +127,34 @@ async fn fetch_abstract_from_doi(client: &reqwest::Client, doi: &str) -> Result<
         .map_err(|e| format!("Failed to parse CrossRef response: {}", e))?;
 
     parse_crossref_abstract(&json).ok_or_else(|| "No abstract in CrossRef response".to_string())
+}
+
+/// 从 OpenAlex 响应 JSON 重建摘要。
+/// abstract_inverted_index 是 { "词": [位置1, 位置2, ...], ... } 的倒排索引，
+/// 按位置排序后拼接即可还原原文。摘要为纯文本，无需清理标签。
+fn parse_openalex_abstract(json: &serde_json::Value) -> Option<String> {
+    let index = json.get("abstract_inverted_index")?.as_object()?;
+    let mut words: Vec<(usize, &str)> = Vec::new();
+    for (word, positions) in index {
+        if let Some(arr) = positions.as_array() {
+            for pos in arr {
+                if let Some(p) = pos.as_u64() {
+                    words.push((p as usize, word.as_str()));
+                }
+            }
+        }
+    }
+    words.sort_by_key(|(pos, _)| *pos);
+    let abstract_text: String = words
+        .iter()
+        .map(|(_, w)| *w)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if abstract_text.is_empty() {
+        None
+    } else {
+        Some(abstract_text)
+    }
 }
 
 /// 从 CrossRef 响应 JSON 中取 message.abstract 并清理为纯文本。
@@ -303,5 +361,46 @@ mod tests {
         // abstract 清理后为空
         let json = serde_json::json!({"message": {"abstract": "<jats:p>  </jats:p>"}});
         assert_eq!(parse_crossref_abstract(&json), None);
+    }
+
+    #[test]
+    fn test_parse_openalex_abstract_reconstructs_text() {
+        // 倒排索引：同一词可出现多次，位置乱序给出，须按位置排序还原
+        let json = serde_json::json!({
+            "abstract_inverted_index": {
+                "study": [1],
+                "We": [0],
+                "RNA": [2, 5],
+                "folding": [3],
+                "and": [4],
+                "splicing": [6]
+            }
+        });
+        assert_eq!(
+            parse_openalex_abstract(&json).as_deref(),
+            Some("We study RNA folding and RNA splicing")
+        );
+    }
+
+    #[test]
+    fn test_parse_openalex_abstract_missing_or_empty() {
+        // 无 abstract_inverted_index 字段（OpenAlex 对无摘要文献返回 null）
+        let json = serde_json::json!({"abstract_inverted_index": null});
+        assert_eq!(parse_openalex_abstract(&json), None);
+        let json = serde_json::json!({"title": "x"});
+        assert_eq!(parse_openalex_abstract(&json), None);
+        // 空索引
+        let json = serde_json::json!({"abstract_inverted_index": {}});
+        assert_eq!(parse_openalex_abstract(&json), None);
+    }
+
+    #[test]
+    fn test_extract_doi_from_query_param() {
+        // AEA 风格：DOI 在查询参数中，后面的参数（& 起）不能吞进 DOI
+        assert_eq!(
+            extract_doi("https://www.aeaweb.org/articles?id=10.1257/aer.20240930&utm_source=rss")
+                .as_deref(),
+            Some("10.1257/aer.20240930")
+        );
     }
 }

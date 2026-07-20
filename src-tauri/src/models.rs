@@ -21,6 +21,9 @@ pub struct Article {
     pub author: Option<String>,
     pub content: Option<String>,
     pub summary: Option<String>,
+    /// DOI（学术期刊条目常携带，用于直接查 OpenAlex/CrossRef 取摘要）
+    #[serde(default)]
+    pub doi: Option<String>,
     /// 分类/标签列表（来自 RSS category 或 Atom category）
     #[serde(default)]
     pub categories: Vec<String>,

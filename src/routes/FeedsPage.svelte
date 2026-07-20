@@ -54,7 +54,7 @@
     successMsg = "";
     extractProgress = null;
     try {
-      const articles = await invoke<{ feed_id: number; title: string; url: string | null; author: string | null; content: string | null; summary: string | null; published_at: string | null }[]>(
+      const articles = await invoke<{ feed_id: number; title: string; url: string | null; author: string | null; content: string | null; summary: string | null; doi: string | null; published_at: string | null }[]>(
         "refresh_feed",
         { feedUrl: feed.url }
       );
@@ -62,13 +62,14 @@
       const withFeedId = articles.map(a => ({ ...a, feed_id: feed.id! }));
       const inserted = await insertArticles(withFeedId);
 
-      // 学术期刊的 RSS 多不含摘要：对新插入且无摘要的文章逐篇抓取原文页面提取
+      // 学术期刊的 RSS 多不含摘要：对新插入且无摘要的文章逐篇提取
+      // 有 DOI 时后端直接查 OpenAlex/CrossRef，不抓期刊页面（有反爬）
       const needSummary = inserted.filter(a => !a.summary && a.url && a.id != null);
       let extracted = 0;
       for (const [i, a] of needSummary.entries()) {
         extractProgress = { current: i + 1, total: needSummary.length };
         try {
-          const summary = await invoke<string>("extract_abstract", { url: a.url });
+          const summary = await invoke<string>("extract_abstract", { url: a.url, doi: a.doi });
           if (summary) {
             await updateArticleSummary(a.id!, summary);
             extracted++;

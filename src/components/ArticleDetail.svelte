@@ -16,13 +16,13 @@
     extractError = "";
   });
 
-  // 文章无摘要时，从原文链接抓取摘要并写回数据库
+  // 文章无摘要时提取：有 DOI 则后端直接查 OpenAlex/CrossRef，否则抓原文页面
   async function handleExtract() {
     if (!article?.url || article.id == null || extracting) return;
     extracting = true;
     extractError = "";
     try {
-      const summary = await invoke<string>("extract_abstract", { url: article.url });
+      const summary = await invoke<string>("extract_abstract", { url: article.url, doi: article.doi });
       await updateArticleSummary(article.id, summary);
       // article 与父组件列表中的对象指向同一 state proxy，直接赋值即可同步 UI
       article.summary = summary;

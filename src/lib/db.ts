@@ -29,6 +29,7 @@ export async function initDb() {
       author TEXT,
       content TEXT,
       summary TEXT,
+      doi TEXT,
       categories TEXT,
       published_at TEXT,
       is_read INTEGER NOT NULL DEFAULT 0,
@@ -59,6 +60,12 @@ export async function initDb() {
   } catch {
     /* 列已存在 */
   }
+  // 同上：旧版本 articles 表没有 doi 列
+  try {
+    await db.execute("ALTER TABLE articles ADD COLUMN doi TEXT");
+  } catch {
+    /* 列已存在 */
+  }
 }
 
 function getDb() {
@@ -84,6 +91,8 @@ export interface Article {
   author: string | null;
   content: string | null;
   summary: string | null;
+  /** 学术文章的 DOI，用于直接查 OpenAlex/CrossRef 提取摘要 */
+  doi: string | null;
   /** DB 中为逗号分隔字符串；后端 invoke 返回的是 string[] */
   categories: string | null;
   published_at: string | null;
@@ -144,8 +153,8 @@ export async function insertArticles(articles: Article[]): Promise<Article[]> {
   const inserted: Article[] = [];
   for (const a of articles) {
     const result = await d.execute(
-      "INSERT OR IGNORE INTO articles (feed_id, title, url, author, content, summary, categories, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [a.feed_id, a.title, a.url, a.author, a.content, a.summary, typeof a.categories === "string" ? a.categories : Array.isArray(a.categories) ? a.categories.join(", ") : null, a.published_at]
+      "INSERT OR IGNORE INTO articles (feed_id, title, url, author, content, summary, doi, categories, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [a.feed_id, a.title, a.url, a.author, a.content, a.summary, a.doi ?? null, typeof a.categories === "string" ? a.categories : Array.isArray(a.categories) ? a.categories.join(", ") : null, a.published_at]
     );
     if (result.rowsAffected > 0 && result.lastInsertId != null) {
       inserted.push({ ...a, id: result.lastInsertId });

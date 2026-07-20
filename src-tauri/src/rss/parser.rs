@@ -1,4 +1,5 @@
 use crate::models::Article;
+use crate::rss::extract::extract_doi;
 use feed_rs::model::Entry;
 use feed_rs::parser;
 
@@ -67,6 +68,10 @@ fn parse_entry(entry: &Entry) -> Article {
         .as_ref()
         .map(|s| strip_html(&s.content));
 
+    // DOI：学术期刊条目常在 guid（Wiley）或链接（AEA）中携带 DOI，
+    // 提取后供摘要抓取直接查 OpenAlex/CrossRef，绕过期刊页面的反爬
+    let doi = extract_doi_from_entry(entry);
+
     // 分类/标签：RSS category 与 Atom category 的 term
     let categories = entry
         .categories
@@ -83,6 +88,7 @@ fn parse_entry(entry: &Entry) -> Article {
         author,
         content,
         summary,
+        doi,
         categories,
         published_at,
         is_read: false,
@@ -167,6 +173,17 @@ fn extract_link(entry: &Entry) -> Option<String> {
     }
 
     None
+}
+
+/// 从条目中提取 DOI：
+/// 1. guid/id 本身是 DOI（Wiley 的 guid 形如 "10.1111/..."）或 doi.org 链接
+/// 2. 任意链接中内嵌 DOI（AEA 的 ?id=10.1257/...、出版社 /doi/ 路径）
+/// DOI 模式（10. + 4-9 位注册号 + / 后缀）足够特异，直接复用 extract 模块的 URL 匹配。
+fn extract_doi_from_entry(entry: &Entry) -> Option<String> {
+    if let Some(doi) = extract_doi(entry.id.trim()) {
+        return Some(doi);
+    }
+    entry.links.iter().find_map(|l| extract_doi(&l.href))
 }
 
 /// Parse and extract feed metadata (title, description, link) from the channel.
@@ -257,5 +274,61 @@ mod tests {
         assert_eq!(a.author.as_deref(), Some("Li, Si, Wang, Wu"));
         // published 优先于 updated
         assert_eq!(a.published_at.unwrap().to_rfc3339(), "2025-06-10T08:00:00+00:00");
+    }
+
+    #[test]
+    fn test_parse_doi_from_guid() {
+        // Wiley 风格：guid 本身即 DOI（description 只含期刊名，不含摘要）
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Wiley Journal</title>
+    <item>
+      <title>Some Paper</title>
+      <guid isPermaLink="false">10.1111/1911-3846.70065</guid>
+      <link>https://onlinelibrary.wiley.com/doi/10.1111/1911-3846.70065</link>
+      <description>Journal of Whatever, EarlyView</description>
+    </item>
+  </channel>
+</rss>"#;
+        let articles = parse_feed_bytes(1, xml.as_bytes()).unwrap();
+        assert_eq!(articles[0].doi.as_deref(), Some("10.1111/1911-3846.70065"));
+    }
+
+    #[test]
+    fn test_parse_doi_from_link_query() {
+        // AEA 风格：guid 是普通 id，DOI 内嵌在链接的 ?id= 查询参数中
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>AEA Journal</title>
+    <item>
+      <title>Some Paper</title>
+      <guid isPermaLink="false">aea-12345</guid>
+      <link>https://www.aeaweb.org/articles?id=10.1257/aer.20240930</link>
+      <description>Volume 114, Issue 5, Page 1-30, May 2024</description>
+    </item>
+  </channel>
+</rss>"#;
+        let articles = parse_feed_bytes(1, xml.as_bytes()).unwrap();
+        assert_eq!(articles[0].doi.as_deref(), Some("10.1257/aer.20240930"));
+    }
+
+    #[test]
+    fn test_parse_doi_none() {
+        // 普通博客条目：无 DOI 模式时为 None
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Blog</title>
+    <item>
+      <title>Post</title>
+      <guid isPermaLink="true">https://example.com/blog/post-1</guid>
+      <description>Just a post.</description>
+    </item>
+  </channel>
+</rss>"#;
+        let articles = parse_feed_bytes(1, xml.as_bytes()).unwrap();
+        assert_eq!(articles[0].doi, None);
     }
 }

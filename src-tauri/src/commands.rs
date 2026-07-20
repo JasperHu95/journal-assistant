@@ -29,11 +29,11 @@ pub async fn refresh_feed(feed_url: String) -> Result<Vec<Article>, String> {
 }
 
 /// 从论文 URL 抓取摘要/描述。
-/// 优先取 <meta name="description"> 或 <meta property="og:description">，
-/// 两者都没有时退回正文中第一个有实质内容的 <p>。
+/// 若 RSS 解析阶段已提取到 DOI，直接查 OpenAlex/CrossRef（期刊页面多有反爬）；
+/// 否则依次尝试：URL 内嵌 DOI -> 页面 meta 标签 DOI -> meta description / 首个实质段落。
 #[tauri::command]
-pub async fn extract_abstract(url: String) -> Result<String, String> {
-    extract::extract_abstract_from_url(&url)
+pub async fn extract_abstract(url: String, doi: Option<String>) -> Result<String, String> {
+    extract::extract_abstract_from_url(&url, doi.as_deref())
         .await
         .map_err(|e| format!("Failed to extract abstract: {}", e))
 }
