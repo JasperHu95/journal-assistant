@@ -1,7 +1,8 @@
 <script lang="ts">
   import { toggleLang } from "../lib/i18n";
   import { useI18n } from "../lib/useI18n.svelte";
-  import type { FeedWithCount } from "../lib/db";
+  import { insertArticles, type Article, type FeedWithCount } from "../lib/db";
+  import { invoke } from "@tauri-apps/api/core";
 
   let {
     currentRoute,
@@ -9,18 +10,46 @@
     feeds,
     selectedFeedId,
     selectFeed,
+    refreshFeeds,
   }: {
     currentRoute: string;
     navigate: (route: string) => void;
     feeds: FeedWithCount[];
     selectedFeedId: number | null;
     selectFeed: (id: number | null) => void;
+    refreshFeeds: () => Promise<void>;
   } = $props();
 
   const localized = useI18n();
 
   // “期刊”父项的展开/折叠状态；当前选中的期刊 ID 由 App 层通过 selectedFeedId 传入
   let journalsExpanded = $state(false);
+
+  // 一键刷新所有源：逐个调用 refresh_feed，单个失败不中断整体
+  let refreshingAll = $state(false);
+  let refreshProgress = $state<{ current: number; total: number } | null>(null);
+
+  async function refreshAll() {
+    if (refreshingAll || feeds.length === 0) return;
+    refreshingAll = true;
+    try {
+      const total = feeds.length;
+      for (const [i, feed] of feeds.entries()) {
+        refreshProgress = { current: i + 1, total };
+        try {
+          const articles = await invoke<Article[]>("refresh_feed", { feedUrl: feed.url });
+          await insertArticles(articles.map((a) => ({ ...a, feed_id: feed.id! })));
+        } catch (e) {
+          console.error(`Failed to refresh feed ${feed.url}:`, e);
+        }
+      }
+      // 全部完成后刷新 App 层 feeds，更新文章数/未读数
+      await refreshFeeds();
+    } finally {
+      refreshingAll = false;
+      refreshProgress = null;
+    }
+  }
 
   const navItems = [
     { path: "/", labelKey: "nav.dashboard" },
@@ -92,6 +121,17 @@
   </nav>
 
   <div class="p-3 border-t border-[#D4C8B0] space-y-2">
+    <button
+      onclick={refreshAll}
+      disabled={refreshingAll || feeds.length === 0}
+      class="w-full text-left px-3 py-1.5 text-xs text-[#6B5E4A] hover:bg-[#D4C8B0]/30 transition-colors border border-[#D4C8B0] disabled:opacity-50"
+    >
+      {refreshProgress
+        ? localized("feeds.refresh_all_progress")
+            .replace("{current}", String(refreshProgress.current))
+            .replace("{total}", String(refreshProgress.total))
+        : localized("feeds.refresh_all")}
+    </button>
     <button
       onclick={toggleLang}
       class="w-full text-left px-3 py-1.5 text-xs text-[#6B5E4A] hover:bg-[#D4C8B0]/30 transition-colors border border-[#D4C8B0]"

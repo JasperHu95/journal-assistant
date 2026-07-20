@@ -50,7 +50,7 @@
 </script>
 
 <div class="flex h-screen bg-[#FAF7F2] font-sans">
-  <Sidebar {currentRoute} {navigate} {feeds} {selectedFeedId} {selectFeed} />
+  <Sidebar {currentRoute} {navigate} {feeds} {selectedFeedId} {selectFeed} {refreshFeeds} />
   <main class="flex-1 overflow-auto">
     {#if dbError}
       <div class="flex flex-col items-center justify-center h-full gap-4">

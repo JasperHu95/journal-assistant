@@ -66,6 +66,13 @@ export async function initDb() {
   } catch {
     /* 列已存在 */
   }
+  // 旧版本 articles 表的 is_read 可能没有默认值，历史行的 is_read 为 NULL，
+  // 导致未读数统计（is_read = 0）漏掉这些文章；幂等迁移修复存量数据
+  try {
+    await db.execute("UPDATE articles SET is_read = 0 WHERE is_read IS NULL");
+  } catch {
+    /* is_read 列不存在等情况，忽略 */
+  }
 }
 
 function getDb() {
@@ -153,7 +160,7 @@ export async function insertArticles(articles: Article[]): Promise<Article[]> {
   const inserted: Article[] = [];
   for (const a of articles) {
     const result = await d.execute(
-      "INSERT OR IGNORE INTO articles (feed_id, title, url, author, content, summary, doi, categories, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR IGNORE INTO articles (feed_id, title, url, author, content, summary, doi, categories, published_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
       [a.feed_id, a.title, a.url, a.author, a.content, a.summary, a.doi ?? null, typeof a.categories === "string" ? a.categories : Array.isArray(a.categories) ? a.categories.join(", ") : null, a.published_at]
     );
     if (result.rowsAffected > 0 && result.lastInsertId != null) {

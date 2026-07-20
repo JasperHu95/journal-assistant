@@ -44,7 +44,11 @@ fn parse_entry(entry: &Entry) -> Article {
             .filter(|n| !n.is_empty())
             .collect();
         if names.is_empty() {
-            None
+            // ScienceDirect 等源不使用标准 author 字段，作者写在 description 中
+            entry
+                .summary
+                .as_ref()
+                .and_then(|s| extract_authors_from_description(&s.content))
         } else {
             Some(names.join(", "))
         }
@@ -95,6 +99,26 @@ fn parse_entry(entry: &Entry) -> Article {
         is_starred: false,
         created_at: None,
     }
+}
+
+/// 从 description/summary 中提取作者：ScienceDirect 等源不用标准 author 字段，
+/// 而是在描述正文中写 "Author(s): Name1, Name2"（也可能写作 "Author:" / "Authors:"）。
+/// 捕获到 HTML 标签或换行为止，避免把摘要正文误当作作者。
+fn extract_authors_from_description(description: &str) -> Option<String> {
+    use regex::Regex;
+    use std::sync::OnceLock;
+
+    static AUTHOR_RE: OnceLock<Regex> = OnceLock::new();
+    let re = AUTHOR_RE.get_or_init(|| {
+        Regex::new(r"(?i)authors?(?:\(s\))?\s*:\s*([^<\n]+)").unwrap()
+    });
+
+    let captures = re.captures(description)?;
+    let raw = captures.get(1)?.as_str();
+    // 双重编码的内容里标签以 &lt; 形式存在，同样视为作者名单的终止
+    let raw = raw.split("&lt;").next().unwrap_or(raw);
+    let authors = decode_entities(raw).trim().to_string();
+    if authors.is_empty() { None } else { Some(authors) }
 }
 
 /// 清除 HTML 字符串中的标签并解码常见实体，返回可纯文本显示的内容。
@@ -330,6 +354,63 @@ mod tests {
 </rss>"#;
         let articles = parse_feed_bytes(1, xml.as_bytes()).unwrap();
         assert_eq!(articles[0].doi, None);
+    }
+
+    #[test]
+    fn test_parse_authors_from_description() {
+        // ScienceDirect 风格：无 dc:creator/author 字段，description 中写 "Author(s): ..."
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>ScienceDirect Journal</title>
+    <item>
+      <title>Some Paper</title>
+      <link>https://www.sciencedirect.com/science/article/pii/S0000000001</link>
+      <description><![CDATA[<p>Author(s): Jane Doe, John Smith</p><p>Publication date: June 2025</p>]]></description>
+    </item>
+  </channel>
+</rss>"#;
+        let articles = parse_feed_bytes(1, xml.as_bytes()).unwrap();
+        // 作者名单在 </p> 处截断，不混入后续元数据
+        assert_eq!(articles[0].author.as_deref(), Some("Jane Doe, John Smith"));
+    }
+
+    #[test]
+    fn test_parse_author_singular_from_description() {
+        // "Author:" 单数写法也应识别
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Journal</title>
+    <item>
+      <title>Paper</title>
+      <link>https://example.com/paper/1</link>
+      <description>Author: Zhang, San
+Volume 10, Issue 2</description>
+    </item>
+  </channel>
+</rss>"#;
+        let articles = parse_feed_bytes(1, xml.as_bytes()).unwrap();
+        // 作者名单在换行处截断
+        assert_eq!(articles[0].author.as_deref(), Some("Zhang, San"));
+    }
+
+    #[test]
+    fn test_parse_no_author_anywhere() {
+        // 无标准 author 字段且 description 中也没有作者行时，author 为 None
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Blog</title>
+    <item>
+      <title>Post</title>
+      <link>https://example.com/blog/post-1</link>
+      <description>Just an abstract without any author info.</description>
+    </item>
+  </channel>
+</rss>"#;
+        let articles = parse_feed_bytes(1, xml.as_bytes()).unwrap();
+        assert_eq!(articles[0].author, None);
     }
 }
 
