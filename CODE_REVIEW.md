@@ -238,3 +238,17 @@ GLM-5.2 忽略 DNS rebinding 后评分：**91/100**
 | Round 1-3 | 84.5 | SSRF全覆盖+CSP+组件+i18n hook+日期+确认 |
 | Round 4 | 89.0 | 错误i18n+IPv6+加密+测试 |
 | Round 5（最终） | **90.5** | Client复用+IPv6精细化+函数拆分+body限制+FetchError+ssrf模块+单测 |
+
+---
+
+## V3.2 OpenCode (GLM-5.2) 审查结果 (2026-07-20)
+
+待修复，用户已知晓。
+
+| 严重度 | 问题 | 文件 |
+|--------|------|------|
+| 中 | handleSelect 快速双击导致 unread_count 递减两次（乐观更新应在 await 前） | JournalPage.svelte |
+| 低 | JournalPage 初始加载 $effect 无 try/catch | JournalPage.svelte |
+| 低 | CatalogPage invoke 泛型缺字段，类型不匹配 Article[] | CatalogPage.svelte |
+| 低 | extract_doi 正则尾部 / 未清理，可能导致 CrossRef 404 | extract.rs |
+| 低 | 文章链接未校验 javascript: scheme | ArticleDetail.svelte |

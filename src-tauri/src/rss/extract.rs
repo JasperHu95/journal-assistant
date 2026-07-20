@@ -50,8 +50,8 @@ fn extract_doi(url: &str) -> Option<String> {
     let re = DOI_RE.get_or_init(|| Regex::new(r#"10\.\d{4,9}/[^\s?#"'<>]+"#).unwrap());
 
     let m = re.find(url)?;
-    // 匹配可能带入 URL 的尾部标点（句点、逗号等），DOI 本身不会以这些字符结尾
-    let doi = m.as_str().trim_end_matches(['.', ',', ';', ')']);
+    // 匹配可能带入 URL 的尾部标点（句点、逗号、斜杠等），DOI 本身不会以这些字符结尾
+    let doi = m.as_str().trim_end_matches(['.', ',', ';', ')', '/']);
     if doi.is_empty() {
         None
     } else {
@@ -235,6 +235,11 @@ mod tests {
         );
         assert_eq!(
             extract_doi("https://example.com/articles/10.1000/xyz123.").as_deref(),
+            Some("10.1000/xyz123")
+        );
+        // 尾部斜杠（如 /doi/10.1000/xyz123/）也要清理，否则 CrossRef 查询 404
+        assert_eq!(
+            extract_doi("https://example.com/doi/10.1000/xyz123/").as_deref(),
             Some("10.1000/xyz123")
         );
     }
