@@ -62,11 +62,11 @@ fn parse_entry(entry: &Entry) -> Article {
         .and_then(|c| c.body.clone())
         .map(|b| strip_html(&b));
 
-    // 摘要：Atom summary 或 RSS description（feed-rs 统一映射到 summary）
-    let summary = entry
-        .summary
-        .as_ref()
-        .map(|s| strip_html(&s.content));
+    // 摘要：Atom summary 或 RSS description（feed-rs 统一映射到 summary）。
+    // 当 summary 为空或仅含元数据（如 "Journal name, EarlyView."）时，
+    // 从 content（content:encoded）中提取摘要——Wiley 等出版社将摘要放在此处。
+    let summary_raw = entry.summary.as_ref().map(|s| strip_html(&s.content));
+    let summary = pick_summary(summary_raw, content.as_deref());
 
     // DOI：学术期刊条目常在 guid（Wiley）或链接（AEA）中携带 DOI，
     // 提取后供摘要抓取直接查 OpenAlex/CrossRef，绕过期刊页面的反爬
@@ -331,4 +331,70 @@ mod tests {
         let articles = parse_feed_bytes(1, xml.as_bytes()).unwrap();
         assert_eq!(articles[0].doi, None);
     }
+}
+
+#[cfg(test)]
+mod content_encoded_tests {
+    use super::*;
+
+    #[test]
+    fn test_feed_rs_captures_content_encoded() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0">
+<channel>
+<title>Test</title>
+<item>
+<title>Article 1</title>
+<description>Short desc</description>
+<content:encoded>&lt;h2&gt;ABSTRACT&lt;/h2&gt;&lt;p&gt;This is the full abstract text from content:encoded which is quite long and should be preserved.&lt;/p&gt;</content:encoded>
+<guid>10.1234/test.001</guid>
+</item>
+</channel>
+</rss>"#;
+        let feed = feed_rs::parser::parse(xml.as_bytes()).unwrap();
+        let entry = &feed.entries[0];
+        
+        // Check what feed-rs captures
+        let summary_text = entry.summary.as_ref().map(|s| s.content.clone());
+        let content_body = entry.content.as_ref().and_then(|c| c.body.clone());
+        
+        println!("summary: {:?}", summary_text);
+        println!("content body: {:?}", content_body);
+        
+        // Does feed-rs capture content:encoded?
+        assert!(content_body.is_some(), "feed-rs should capture content:encoded");
+        let body = content_body.unwrap();
+        assert!(body.contains("full abstract text"), "content:encoded body should contain the abstract");
+    }
+}
+
+/// 选择最佳摘要：summary（RSS description）优先，但当它为空或仅为元数据时回退到 content（content:encoded）。
+/// Wiley 等出版社将摘要放在 <content:encoded> 而非 <description> 中。
+fn pick_summary(summary: Option<String>, content: Option<&str>) -> Option<String> {
+    // 如果 summary 包含有意义的摘要内容（长度 > 50 且不只是 "Journal name, EarlyView."），直接使用
+    if let Some(ref s) = summary {
+        let trimmed = s.trim();
+        if trimmed.len() > 50 && !is_metadata_only(trimmed) {
+            return summary;
+        }
+    }
+    // 否则尝试从 content 中提取摘要
+    if let Some(c) = content {
+        let trimmed = c.trim();
+        if trimmed.len() > 50 {
+            return Some(trimmed.to_string());
+        }
+    }
+    // 两者都没有有意义的内容，返回 summary（可能为空或短元数据）
+    summary
+}
+
+/// 判断文本是否仅为 RSS 元数据（如 "Journal name, EarlyView."、"Volume X, Issue Y"）而非真正摘要。
+fn is_metadata_only(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    // 常见的无摘要元数据模式
+    let patterns = ["earlyview", "volume ", "issue ", "page ", "table of contents", "publication date"];
+    let match_count = patterns.iter().filter(|p| lower.contains(*p)).count();
+    // 如果匹配 2 个以上元数据关键词且文本较短，认为是纯元数据
+    match_count >= 2 && text.len() < 200
 }
