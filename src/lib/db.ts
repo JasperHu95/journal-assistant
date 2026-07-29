@@ -259,3 +259,18 @@ export function formatDate(iso: string | null | undefined): string {
     minute: "2-digit",
   });
 }
+
+/** 将 ISO 日期字符串格式化为相对时间（刚刚/N 分钟前/N 小时前/N 天前）；30 天以上回退到 formatDate */
+export function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return iso;
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} 天前`;
+  return formatDate(iso);
+}

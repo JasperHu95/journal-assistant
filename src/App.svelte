@@ -5,7 +5,8 @@
   import JournalPage from "./routes/JournalPage.svelte";
   import CatalogPage from "./routes/CatalogPage.svelte";
   import TagsPage from "./routes/TagsPage.svelte";
-  import { initDb, getFeedsWithArticleCount, type FeedWithCount } from "./lib/db";
+  import { initDb, getFeedsWithArticleCount, insertArticles, type Article, type FeedWithCount } from "./lib/db";
+  import { invoke } from "@tauri-apps/api/core";
   import { useI18n } from "./lib/useI18n.svelte";
 
   let currentRoute = $state("/");
@@ -26,11 +27,39 @@
     }
   }
 
+  // 一键刷新所有源：逐个调用 refresh_feed，单个失败不中断整体
+  let refreshingAll = $state(false);
+  let refreshProgress = $state<{ current: number; total: number } | null>(null);
+
+  async function refreshAll() {
+    if (refreshingAll || feeds.length === 0) return;
+    refreshingAll = true;
+    try {
+      const total = feeds.length;
+      for (const [i, feed] of feeds.entries()) {
+        refreshProgress = { current: i + 1, total };
+        try {
+          const articles = await invoke<Article[]>("refresh_feed", { feedUrl: feed.url });
+          await insertArticles(articles.map((a) => ({ ...a, feed_id: feed.id! })));
+        } catch (e) {
+          console.error(`Failed to refresh feed ${feed.url}:`, e);
+        }
+      }
+      // 全部完成后刷新 App 层 feeds，更新文章数/未读数
+      await refreshFeeds();
+    } finally {
+      refreshingAll = false;
+      refreshProgress = null;
+    }
+  }
+
   $effect(() => {
     initDb()
       .then(async () => {
         dbReady = true;
         await refreshFeeds();
+        // 开启"自动刷新"开关时，启动后自动执行一次一键刷新
+        if (localStorage.getItem("auto_refresh") === "1") refreshAll();
       })
       .catch((e) => {
         console.error("Database init failed:", e);
@@ -50,7 +79,7 @@
 </script>
 
 <div class="flex h-screen bg-[#FAF7F2] font-sans">
-  <Sidebar {currentRoute} {navigate} {feeds} {selectedFeedId} {selectFeed} {refreshFeeds} />
+  <Sidebar {currentRoute} {navigate} {feeds} {selectedFeedId} {selectFeed} {refreshFeeds} {refreshAll} {refreshingAll} {refreshProgress} />
   <main class="flex-1 overflow-auto">
     {#if dbError}
       <div class="flex flex-col items-center justify-center h-full gap-4">

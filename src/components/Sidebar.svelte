@@ -1,8 +1,7 @@
 <script lang="ts">
   import { toggleLang } from "../lib/i18n";
   import { useI18n } from "../lib/useI18n.svelte";
-  import { insertArticles, type Article, type FeedWithCount } from "../lib/db";
-  import { invoke } from "@tauri-apps/api/core";
+  import type { FeedWithCount } from "../lib/db";
 
   let {
     currentRoute,
@@ -10,14 +9,18 @@
     feeds,
     selectedFeedId,
     selectFeed,
-    refreshFeeds,
+    refreshAll,
+    refreshingAll,
+    refreshProgress,
   }: {
     currentRoute: string;
     navigate: (route: string) => void;
     feeds: FeedWithCount[];
     selectedFeedId: number | null;
     selectFeed: (id: number | null) => void;
-    refreshFeeds: () => Promise<void>;
+    refreshAll: () => Promise<void>;
+    refreshingAll: boolean;
+    refreshProgress: { current: number; total: number } | null;
   } = $props();
 
   const localized = useI18n();
@@ -25,30 +28,12 @@
   // “期刊”父项的展开/折叠状态；当前选中的期刊 ID 由 App 层通过 selectedFeedId 传入
   let journalsExpanded = $state(false);
 
-  // 一键刷新所有源：逐个调用 refresh_feed，单个失败不中断整体
-  let refreshingAll = $state(false);
-  let refreshProgress = $state<{ current: number; total: number } | null>(null);
+  // 启动时自动刷新开关，持久化到 localStorage（App 层在 dbReady 后读取）
+  let autoRefresh = $state(localStorage.getItem("auto_refresh") === "1");
 
-  async function refreshAll() {
-    if (refreshingAll || feeds.length === 0) return;
-    refreshingAll = true;
-    try {
-      const total = feeds.length;
-      for (const [i, feed] of feeds.entries()) {
-        refreshProgress = { current: i + 1, total };
-        try {
-          const articles = await invoke<Article[]>("refresh_feed", { feedUrl: feed.url });
-          await insertArticles(articles.map((a) => ({ ...a, feed_id: feed.id! })));
-        } catch (e) {
-          console.error(`Failed to refresh feed ${feed.url}:`, e);
-        }
-      }
-      // 全部完成后刷新 App 层 feeds，更新文章数/未读数
-      await refreshFeeds();
-    } finally {
-      refreshingAll = false;
-      refreshProgress = null;
-    }
+  function toggleAutoRefresh() {
+    autoRefresh = !autoRefresh;
+    localStorage.setItem("auto_refresh", autoRefresh ? "1" : "0");
   }
 
   const navItems = [
@@ -121,17 +106,30 @@
   </nav>
 
   <div class="p-3 border-t border-[#D4C8B0] space-y-2">
-    <button
-      onclick={refreshAll}
-      disabled={refreshingAll || feeds.length === 0}
-      class="w-full text-left px-3 py-1.5 text-xs text-[#6B5E4A] hover:bg-[#D4C8B0]/30 transition-colors border border-[#D4C8B0] disabled:opacity-50"
-    >
-      {refreshProgress
-        ? localized("feeds.refresh_all_progress")
-            .replace("{current}", String(refreshProgress.current))
-            .replace("{total}", String(refreshProgress.total))
-        : localized("feeds.refresh_all")}
-    </button>
+    <div class="flex items-center gap-2">
+      <button
+        onclick={refreshAll}
+        disabled={refreshingAll || feeds.length === 0}
+        class="flex-1 text-left px-3 py-1.5 text-xs text-[#6B5E4A] hover:bg-[#D4C8B0]/30 transition-colors border border-[#D4C8B0] disabled:opacity-50"
+      >
+        {refreshProgress
+          ? localized("feeds.refresh_all_progress")
+              .replace("{current}", String(refreshProgress.current))
+              .replace("{total}", String(refreshProgress.total))
+          : localized("feeds.refresh_all")}
+      </button>
+      <button
+        onclick={toggleAutoRefresh}
+        aria-pressed={autoRefresh}
+        title={localized("feeds.auto_refresh")}
+        class="px-2 py-1.5 text-xs transition-colors border
+          {autoRefresh
+            ? 'bg-[#8B1A2B] text-white border-[#8B1A2B]'
+            : 'text-[#6B5E4A] border-[#D4C8B0] hover:bg-[#D4C8B0]/30'}"
+      >
+        {localized("feeds.auto_refresh")}
+      </button>
+    </div>
     <button
       onclick={toggleLang}
       class="w-full text-left px-3 py-1.5 text-xs text-[#6B5E4A] hover:bg-[#D4C8B0]/30 transition-colors border border-[#D4C8B0]"

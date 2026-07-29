@@ -3,6 +3,7 @@
   import { CATEGORIES, JOURNAL_CATALOG, type CatalogJournal } from "../lib/journal-catalog";
   import { getFeeds, addFeed, deleteFeed, insertArticles, updateArticleSummary, type Feed } from "../lib/db";
   import { useI18n } from "../lib/useI18n.svelte";
+  import SplitPane from "../components/SplitPane.svelte";
 
   // 空字符串表示"全部分类"
   let selectedCategory = $state("");
@@ -34,6 +35,8 @@
       await addFeed(result);
       await loadFeeds();
       await refreshFeeds();
+      // 订阅成功后立即刷新该期刊文章，无需用户再手动点刷新
+      await handleRefresh(journal);
     } catch (e) {
       console.error(String(e));
       error = localized("error.fetch_failed");
@@ -103,36 +106,38 @@
   }
 </script>
 
-<div class="flex h-full">
-  <aside class="w-64 shrink-0 border-r border-[#D4C8B0] bg-[#F5F0E8] overflow-y-auto">
-    <div class="p-4 border-b border-[#D4C8B0]">
-      <h2 class="font-serif text-lg text-[#2C2416] tracking-wide">{localized("catalog.title")}</h2>
-    </div>
-    <nav class="p-3 space-y-0.5">
-      <button
-        onclick={() => selectedCategory = ""}
-        class="w-full text-left px-3 py-2 text-sm transition-colors
-          {selectedCategory === ""
-            ? 'bg-[#8B1A2B]/10 text-[#8B1A2B] border-l-2 border-[#8B1A2B] font-medium'
-            : 'text-[#6B5E4A] hover:bg-[#D4C8B0]/30'}"
-      >
-        {localized("catalog.all_categories")}
-      </button>
-      {#each CATEGORIES as category}
+<SplitPane storageKey="catalog-pane" leftWidth={256}>
+  {#snippet left()}
+    <aside class="h-full bg-[#F5F0E8] overflow-y-auto">
+      <div class="p-4 border-b border-[#D4C8B0]">
+        <h2 class="font-serif text-lg text-[#2C2416] tracking-wide">{localized("catalog.title")}</h2>
+      </div>
+      <nav class="p-3 space-y-0.5">
         <button
-          onclick={() => selectedCategory = category}
+          onclick={() => selectedCategory = ""}
           class="w-full text-left px-3 py-2 text-sm transition-colors
-            {selectedCategory === category
+            {selectedCategory === ""
               ? 'bg-[#8B1A2B]/10 text-[#8B1A2B] border-l-2 border-[#8B1A2B] font-medium'
               : 'text-[#6B5E4A] hover:bg-[#D4C8B0]/30'}"
         >
-          {category}
+          {localized("catalog.all_categories")}
         </button>
-      {/each}
-    </nav>
-  </aside>
-
-  <div class="flex-1 overflow-y-auto p-8">
+        {#each CATEGORIES as category}
+          <button
+            onclick={() => selectedCategory = category}
+            class="w-full text-left px-3 py-2 text-sm transition-colors
+              {selectedCategory === category
+                ? 'bg-[#8B1A2B]/10 text-[#8B1A2B] border-l-2 border-[#8B1A2B] font-medium'
+                : 'text-[#6B5E4A] hover:bg-[#D4C8B0]/30'}"
+          >
+            {category}
+          </button>
+        {/each}
+      </nav>
+    </aside>
+  {/snippet}
+  {#snippet right()}
+    <div class="p-8">
     {#if error}
       <p class="text-sm text-red-700 mb-4">{error}</p>
     {/if}
@@ -174,5 +179,6 @@
         </div>
       {/each}
     </div>
-  </div>
-</div>
+    </div>
+  {/snippet}
+</SplitPane>

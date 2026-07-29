@@ -456,18 +456,60 @@ fn pick_summary(summary: Option<String>, content: Option<&str>) -> Option<String
     if let Some(ref s) = summary {
         let trimmed = s.trim();
         if trimmed.len() > 50 && !is_metadata_only(trimmed) {
-            return summary;
+            return summary.map(|s| truncate_french_abstract(&s));
         }
     }
     // 否则尝试从 content 中提取摘要
     if let Some(c) = content {
         let trimmed = c.trim();
         if trimmed.len() > 50 {
-            return Some(trimmed.to_string());
+            return Some(truncate_french_abstract(trimmed));
         }
     }
     // 两者都没有有意义的内容，返回 summary（可能为空或短元数据）
     summary
+}
+
+/// 截断英法双语摘要中的法语部分，只保留英文摘要。
+/// CAR（Contemporary Accounting Research）等加拿大期刊的 content:encoded 中
+/// 英文摘要之后紧跟法语摘要（以法语标题或重复的 ABSTRACT 标题开头）。
+/// 截断规则（取最靠前的截断点）：
+/// 1. 出现多个大写 "ABSTRACT" 标题（英法各一个）时，截断到第二个之前；
+/// 2. 出现明显的法语起始标记（英文摘要中不会出现的表达）时，截断到该标记之前。
+fn truncate_french_abstract(text: &str) -> String {
+    let mut cut: Option<usize> = None;
+
+    // 大写 ABSTRACT 是标题样式，英文摘要正文中几乎不会出现，可安全作为分隔点
+    if let Some(first) = text.find("ABSTRACT") {
+        let after_first = first + "ABSTRACT".len();
+        if let Some(rel) = text[after_first..].find("ABSTRACT") {
+            cut = Some(after_first + rel);
+        }
+    }
+
+    // 明显的法语起始表达
+    for marker in [
+        "Sommaire",
+        "Résumé",
+        "RÉSUMÉ",
+        "Cet article",
+        "Cette étude",
+        "Nous analysons",
+        "Dans le cadre",
+        "L'auteur",
+        "Les résultats",
+    ] {
+        if let Some(pos) = text.find(marker) {
+            if cut.map_or(true, |c| pos < c) {
+                cut = Some(pos);
+            }
+        }
+    }
+
+    match cut {
+        Some(pos) => text[..pos].trim().to_string(),
+        None => text.to_string(),
+    }
 }
 
 /// 判断文本是否仅为 RSS 元数据（如 "Journal name, EarlyView."、"Volume X, Issue Y"）而非真正摘要。
@@ -478,4 +520,64 @@ fn is_metadata_only(text: &str) -> bool {
     let match_count = patterns.iter().filter(|p| lower.contains(*p)).count();
     // 如果匹配 2 个以上元数据关键词且文本较短，认为是纯元数据
     match_count >= 2 && text.len() < 200
+}
+
+
+#[cfg(test)]
+mod french_abstract_tests {
+    use super::*;
+
+    #[test]
+    fn test_truncate_at_second_abstract_marker() {
+        // CAR 风格：英文 ABSTRACT 段落之后紧跟法语 ABSTRACT 段落
+        let text = "ABSTRACT This study examines audit quality and finds robust evidence. ABSTRACT Cette \u{e9}tude examine la qualit\u{e9} de l'audit.";
+        let result = truncate_french_abstract(text);
+        assert_eq!(
+            result,
+            "ABSTRACT This study examines audit quality and finds robust evidence."
+        );
+    }
+
+    #[test]
+    fn test_truncate_at_french_marker() {
+        // 法语部分无 ABSTRACT 标题，以明显的法语起始表达开头
+        let text = "ABSTRACT We analyze disclosure choices in capital markets. Nous analysons les choix de divulgation sur les march\u{e9}s financiers.";
+        let result = truncate_french_abstract(text);
+        assert_eq!(
+            result,
+            "ABSTRACT We analyze disclosure choices in capital markets."
+        );
+    }
+
+    #[test]
+    fn test_truncate_at_sommaire() {
+        let text = "ABSTRACT English abstract text that is long enough to matter here. Sommaire Cet article pr\u{e9}sente les r\u{e9}sultats.";
+        let result = truncate_french_abstract(text);
+        assert_eq!(
+            result,
+            "ABSTRACT English abstract text that is long enough to matter here."
+        );
+    }
+
+    #[test]
+    fn test_no_truncation_for_english_only() {
+        // 纯英文摘要（含小写 abstract 一词）不应被截断
+        let text = "ABSTRACT This paper studies how markets react to news and the abstract notion of risk.";
+        let result = truncate_french_abstract(text);
+        assert_eq!(result, text);
+    }
+
+    #[test]
+    fn test_pick_summary_bilingual_content() {
+        // summary 仅为元数据时回退到 content，并截断其中的法语部分
+        let content = "ABSTRACT We examine earnings management in family firms and document several findings. ABSTRACT Nous examinons la gestion des r\u{e9}sultats.";
+        let summary = pick_summary(
+            Some("Contemporary Accounting Research, EarlyView.".to_string()),
+            Some(content),
+        );
+        assert_eq!(
+            summary.as_deref(),
+            Some("ABSTRACT We examine earnings management in family firms and document several findings.")
+        );
+    }
 }
