@@ -139,6 +139,12 @@ export async function deleteFeed(id: number): Promise<void> {
   await d.execute("DELETE FROM feeds WHERE id = ?", [id]);
 }
 
+/** 更新订阅源显示名（内置期刊订阅后以期刊名覆盖 RSS 原标题） */
+export async function updateFeedTitle(id: number, title: string): Promise<void> {
+  const d = getDb();
+  await d.execute("UPDATE feeds SET title = ? WHERE id = ?", [title, id]);
+}
+
 // 期刊视图：查询所有 feed 并附带各自的文章数和未读数
 export async function getFeedsWithArticleCount(): Promise<FeedWithCount[]> {
   const d = getDb();

@@ -5,7 +5,8 @@
   import JournalPage from "./routes/JournalPage.svelte";
   import CatalogPage from "./routes/CatalogPage.svelte";
   import TagsPage from "./routes/TagsPage.svelte";
-  import { initDb, getFeedsWithArticleCount, insertArticles, type Article, type FeedWithCount } from "./lib/db";
+  import { initDb, getFeedsWithArticleCount, insertArticles, updateFeedTitle, type Article, type FeedWithCount } from "./lib/db";
+  import { catalogNameForUrl } from "./lib/journal-catalog";
   import { invoke } from "@tauri-apps/api/core";
   import { useI18n } from "./lib/useI18n.svelte";
 
@@ -22,6 +23,14 @@
   async function refreshFeeds() {
     try {
       feeds = await getFeedsWithArticleCount();
+      // 内置期刊的显示名统一为期刊名；顺带修正历史订阅中带出版社前缀的旧标题
+      for (const f of feeds) {
+        const name = catalogNameForUrl(f.url);
+        if (name != null && f.title !== name && f.id != null) {
+          await updateFeedTitle(f.id, name);
+          f.title = name;
+        }
+      }
     } catch (e) {
       console.error("Failed to load feeds:", e);
     }

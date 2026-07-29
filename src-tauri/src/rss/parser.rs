@@ -470,48 +470,56 @@ fn pick_summary(summary: Option<String>, content: Option<&str>) -> Option<String
     summary
 }
 
-/// 截断英法双语摘要中的法语部分，只保留英文摘要。
-/// CAR（Contemporary Accounting Research）等加拿大期刊的 content:encoded 中
-/// 英文摘要之后紧跟法语摘要（以法语标题或重复的 ABSTRACT 标题开头）。
-/// 截断规则（取最靠前的截断点）：
-/// 1. 出现多个大写 "ABSTRACT" 标题（英法各一个）时，截断到第二个之前；
-/// 2. 出现明显的法语起始标记（英文摘要中不会出现的表达）时，截断到该标记之前。
 /// 截断英法双语拼接标题中的法语部分，只保留英文标题。
 /// Wiley 的 CAR（Contemporary Accounting Research）源把英文标题与法语标题
-/// 无分隔符直接拼接（如 "Analyst IntegrityL'int\u{e9}grit\u{e9} des analysts"）。
-/// 规则：找到第一个法语重音字符；英法拼接处呈"小写字母紧跟大写字母"的边界
-/// （如 "WomenLa"），取重音之前最后一个这种边界截断；
-/// 找不到时退化为截断到重音所在单词之前的空格。
+/// 无分隔符直接拼接，且两种顺序都存在：
+/// - 英前法后："Analyst IntegrityL'int\u{e9}grit\u{e9} des analystes"
+/// - 法前英后："... la comptabilit\u{e9}The Epistemic Rise of Accounting Research ..."
+/// 规则：英法拼接处呈"小写字母紧跟大写字母"的边界（seam）。
+/// - 重音字符出现在某个 seam 之后（英前法后）：取重音之前最后一个 seam 截断，保留前半；
+/// - 重音字符出现在所有 seam 之前（法前英后）：取最后一个重音之后第一个 seam 截断，保留后半；
+/// - 找不到 seam 时退化为截断到重音所在单词之前的空格。
 fn truncate_french_title(title: &str) -> String {
     const FRENCH_CHARS: &str = "\u{e9}\u{e8}\u{ea}\u{eb}\u{e0}\u{e2}\u{f9}\u{fb}\u{fc}\u{f4}\u{ee}\u{ef}\u{e7}\u{153}\u{e6}\u{c9}\u{c8}\u{ca}\u{cb}\u{c0}\u{c2}\u{d9}\u{db}\u{dc}\u{d4}\u{ce}\u{cf}\u{c7}\u{152}\u{c6}";
-    let Some(accent_pos) = title.find(|c: char| FRENCH_CHARS.contains(c)) else {
+    let Some(first_accent) = title.find(|c: char| FRENCH_CHARS.contains(c)) else {
         return title.to_string();
     };
 
-    // 重音之前最后一个"小写->大写"边界即英法拼接缝
-    let mut seam = None;
+    // 收集所有"小写->大写"拼接缝的位置
+    let mut seams: Vec<usize> = Vec::new();
     let mut prev_is_lower = false;
     for (i, c) in title.char_indices() {
-        if i >= accent_pos {
-            break;
-        }
         if prev_is_lower && c.is_uppercase() {
-            seam = Some(i);
+            seams.push(i);
         }
         prev_is_lower = c.is_lowercase();
     }
-    if let Some(cut) = seam {
+
+    // 英前法后：截断到重音之前最后一个 seam，保留英文前半
+    if let Some(&cut) = seams.iter().filter(|&&s| s < first_accent).last() {
         return title[..cut].trim().to_string();
     }
 
+    // 法前英后：从最后一个重音之后第一个 seam 起保留英文后半
+    let last_accent = title.rfind(|c: char| FRENCH_CHARS.contains(c)).unwrap();
+    if let Some(&cut) = seams.iter().find(|&&s| s > last_accent) {
+        return title[cut..].trim().to_string();
+    }
+
     // 无拼接缝：截断到重音所在单词之前的空格
-    let before = &title[..accent_pos];
+    let before = &title[..first_accent];
     if let Some(last_space) = before.rfind(' ') {
         return title[..last_space].trim().to_string();
     }
     before.trim().to_string()
 }
 
+/// 截断英法双语摘要中的法语部分，只保留英文摘要。
+/// CAR（Contemporary Accounting Research）等加拿大期刊的 content:encoded 中
+/// 英文摘要之后紧跟法语摘要（以法语标题或重复的 ABSTRACT 标题开头）。
+/// 截断规则（取最靠前的截断点）：
+/// 1. 出现多个大写 "ABSTRACT" 标题（英法各一个）时，截断到第二个之前；
+/// 2. 出现明显的法语起始标记（英文摘要中不会出现的表达）时，截断到该标记之前。
 fn truncate_french_abstract(text: &str) -> String {
     let mut cut: Option<usize> = None;
 
@@ -638,5 +646,21 @@ mod french_title_tests {
     fn test_no_accent_unchanged() {
         let title = "Analyst Integrity in Question";
         assert_eq!(truncate_french_title(title), "Analyst Integrity in Question");
+    }
+
+    #[test]
+    fn test_glued_french_first() {
+        // 法前英后：保留英文后半
+        let title = "L'envol\u{e9}e \u{e9}pist\u{e9}mique de la recherche comptable en \u{e9}conomie financi\u{e8}re : une \u{e9}tude historique sur la conception de l'utilit\u{e9} de la comptabilit\u{e9}The Epistemic Rise of Accounting Research in Financial Economics: A Historical Study on the Conception of the Usefulness of Accounting";
+        assert_eq!(
+            truncate_french_title(title),
+            "The Epistemic Rise of Accounting Research in Financial Economics: A Historical Study on the Conception of the Usefulness of Accounting"
+        );
+    }
+
+    #[test]
+    fn test_glued_french_first_short() {
+        let title = "Imp\u{f4}ts et soci\u{e9}t\u{e9}sTax Payments in Loss Firms";
+        assert_eq!(truncate_french_title(title), "Tax Payments in Loss Firms");
     }
 }

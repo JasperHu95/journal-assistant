@@ -91,7 +91,6 @@
   }
 
   async function handleDelete(id: number) {
-    if (!confirm(localized("common.confirm_delete"))) return;
     await deleteFeed(id);
     await loadFeeds();
     await refreshFeeds();

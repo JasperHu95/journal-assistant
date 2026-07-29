@@ -24,8 +24,7 @@ export const CATEGORIES = [
   "Practice & General Business",
 ] as const;
 
-export const JOURNAL_CATALOG: CatalogJournal[] = [
-  // Accounting
+export const JOURNAL_CATALOG: CatalogJournal[] = [  // Accounting
   { name: "Accounting, Organizations and Society", category: "Accounting", rssUrl: "https://rss.sciencedirect.com/publication/science/03613682", issn: "0361-3682" },
   { name: "Contemporary Accounting Research", category: "Accounting", rssUrl: "https://onlinelibrary.wiley.com/feed/19113846/most-recent", issn: "0823-9150" },
   { name: "Journal of Accounting and Economics", category: "Accounting", rssUrl: "https://rss.sciencedirect.com/publication/science/01654101", issn: "0165-4101" },
@@ -75,3 +74,9 @@ export const JOURNAL_CATALOG: CatalogJournal[] = [
   { name: "Harvard Business Review", category: "Practice & General Business", rssUrl: "http://feeds.hbr.org/harvardbusiness", issn: "0017-8012" },
   { name: "Sloan Management Review", category: "Practice & General Business", rssUrl: "http://feeds.feedburner.com/mitsmr", issn: "1532-9194" },
 ];
+
+/** 按 RSS URL 查找内置期刊名称；非内置源返回 null。
+ *  用于把订阅源的显示名统一为期刊名（RSS 原标题常带 "Wiley:" 等出版社前缀）。 */
+export function catalogNameForUrl(url: string): string | null {
+  return JOURNAL_CATALOG.find((j) => j.rssUrl === url)?.name ?? null;
+}

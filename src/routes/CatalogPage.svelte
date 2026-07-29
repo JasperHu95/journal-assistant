@@ -32,7 +32,8 @@
     error = "";
     try {
       const result = await invoke<Feed>("add_feed", { url: journal.rssUrl });
-      await addFeed(result);
+      // 显示名统一为期刊名，不使用 RSS 原标题（常带 "Wiley:" 等出版社前缀）
+      await addFeed({ ...result, title: journal.name });
       await loadFeeds();
       await refreshFeeds();
       // 订阅成功后立即刷新该期刊文章，无需用户再手动点刷新
