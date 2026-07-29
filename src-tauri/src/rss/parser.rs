@@ -22,11 +22,11 @@ pub fn parse_feed_bytes(feed_id: i64, bytes: &[u8]) -> Result<Vec<Article>, Stri
 
 /// 提取单篇文章的各字段，集中处理不同 feed 格式的字段差异。
 fn parse_entry(entry: &Entry) -> Article {
-    // 标题：feed-rs 已处理 CDATA 和 XML 实体，这里只做空白清理
+    // 标题：清理空白，截断英法双语拼接中的法语部分（Wiley CAR 源）
     let title = entry
         .title
         .as_ref()
-        .map(|t| t.content.trim().to_string())
+        .map(|t| truncate_french_title(t.content.trim()))
         .unwrap_or_default();
 
     // 链接：Atom 中常有多个 link（alternate/self/enclosure），
@@ -476,6 +476,42 @@ fn pick_summary(summary: Option<String>, content: Option<&str>) -> Option<String
 /// 截断规则（取最靠前的截断点）：
 /// 1. 出现多个大写 "ABSTRACT" 标题（英法各一个）时，截断到第二个之前；
 /// 2. 出现明显的法语起始标记（英文摘要中不会出现的表达）时，截断到该标记之前。
+/// 截断英法双语拼接标题中的法语部分，只保留英文标题。
+/// Wiley 的 CAR（Contemporary Accounting Research）源把英文标题与法语标题
+/// 无分隔符直接拼接（如 "Analyst IntegrityL'int\u{e9}grit\u{e9} des analysts"）。
+/// 规则：找到第一个法语重音字符；英法拼接处呈"小写字母紧跟大写字母"的边界
+/// （如 "WomenLa"），取重音之前最后一个这种边界截断；
+/// 找不到时退化为截断到重音所在单词之前的空格。
+fn truncate_french_title(title: &str) -> String {
+    const FRENCH_CHARS: &str = "\u{e9}\u{e8}\u{ea}\u{eb}\u{e0}\u{e2}\u{f9}\u{fb}\u{fc}\u{f4}\u{ee}\u{ef}\u{e7}\u{153}\u{e6}\u{c9}\u{c8}\u{ca}\u{cb}\u{c0}\u{c2}\u{d9}\u{db}\u{dc}\u{d4}\u{ce}\u{cf}\u{c7}\u{152}\u{c6}";
+    let Some(accent_pos) = title.find(|c: char| FRENCH_CHARS.contains(c)) else {
+        return title.to_string();
+    };
+
+    // 重音之前最后一个"小写->大写"边界即英法拼接缝
+    let mut seam = None;
+    let mut prev_is_lower = false;
+    for (i, c) in title.char_indices() {
+        if i >= accent_pos {
+            break;
+        }
+        if prev_is_lower && c.is_uppercase() {
+            seam = Some(i);
+        }
+        prev_is_lower = c.is_lowercase();
+    }
+    if let Some(cut) = seam {
+        return title[..cut].trim().to_string();
+    }
+
+    // 无拼接缝：截断到重音所在单词之前的空格
+    let before = &title[..accent_pos];
+    if let Some(last_space) = before.rfind(' ') {
+        return title[..last_space].trim().to_string();
+    }
+    before.trim().to_string()
+}
+
 fn truncate_french_abstract(text: &str) -> String {
     let mut cut: Option<usize> = None;
 
@@ -579,5 +615,28 @@ mod french_abstract_tests {
             summary.as_deref(),
             Some("ABSTRACT We examine earnings management in family firms and document several findings.")
         );
+    }
+}
+
+#[cfg(test)]
+mod french_title_tests {
+    use super::*;
+
+    #[test]
+    fn test_glued_french_single_word() {
+        let title = "Analyst IntegrityL'int\u{e9}grit\u{e9} des analysts";
+        assert_eq!(truncate_french_title(title), "Analyst Integrity");
+    }
+
+    #[test]
+    fn test_glued_french_long_title() {
+        let title = "The Falling Roe and Relocation of Skilled WomenLa remise en cause de l'arr\u{ea}t Roe";
+        assert_eq!(truncate_french_title(title), "The Falling Roe and Relocation of Skilled Women");
+    }
+
+    #[test]
+    fn test_no_accent_unchanged() {
+        let title = "Analyst Integrity in Question";
+        assert_eq!(truncate_french_title(title), "Analyst Integrity in Question");
     }
 }

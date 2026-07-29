@@ -48,7 +48,6 @@
   async function handleUnsubscribe(journal: CatalogJournal) {
     const feed = feeds.find((f) => f.url === journal.rssUrl);
     if (!feed || feed.id == null) return;
-    if (!confirm(localized("common.confirm_delete"))) return;
     pendingUrl = journal.rssUrl;
     error = "";
     try {
